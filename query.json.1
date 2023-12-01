@@ -1,0 +1,26 @@
+/*[
+    {
+        "Metric": "os.cpuUtilization.user.sum"
+    },
+    {
+        "Metric": "os.cpuUtilization.idle.sum"
+    },
+    {
+        "Metric": "db.Transactions.xact_commit.sum"
+    },
+    {
+        "Metric": "db.Transactions.blocked_transactions.sum"
+    },
+    {
+        "Metric": "db.Transactions.commit_latency.sum"
+    },
+    {
+        "Metric": "db.Transactions.commit_latency.avg"
+    }
+]*/
+[
+    {
+        "Metric": "db.load.avg",
+        "GroupBy": { "Group": "db.wait_event", "Limit": 10 }
+    }
+]

@@ -1,0 +1,139 @@
+Calculated metrics
+1. blocks read / logical * 100 Percent of disk reads from logical reads.
+ logical reads to shared_buffers
+2. rows returned / rows fetched - Indication of full scans and many dead tupes
+3. network throughput
+4. os.fileSys.usedPercent If temp files reach storage limit
+5. db.User.numbackends to AAS
+6. numbackends to max_connections
+7. Num updates to all processed rows fetch + update + del + insert
+
+
+From cloud watch:
+VolumeBytesUsed
+EngineUptime
+ReplicationSlotDiskUsage
+SnapshotStorageUsed
+TransactionLogsDiskUsage
+
+
+Difference between these metrics:
+os.network.rx os.network.tx NetworkThroughput
+
+
+Differnce between db.Temp.temp_bytes and os.diskIO.rdstemp.writeKb
+
+
+
+let regex = /^GREATEST\(\{[\d\/\*\+\-]*DBInstanceClassMemory[\d\/\*\+\-]*\},\s*-?\d+\)$/;
+
+
+
+* pg_stat_database.tup_returned
+    = sum(pg_stat_all_tables.seq_tup_read)
+    + sum(pg_stat_all_indexes.idx_tup_read)
+Number of live rows fetched by sequential scans and index entries returned by index scans in this database
+
+
+* pg_stat_database.tup_fetched
+    = sum(pg_stat_all_tables.idx_tup_fetch)
+Number of live rows fetched by index scans in this database
+    
+    
+    
+seq_tup_read
+       Number of live rows fetched by sequential scans
+idx_tup_read
+       Number of index entries returned by scans on this index
+idx_tup_fetch
+       Number of live table rows fetched by simple index scans using this index
+      
+      
+  <para>
+   Indexes can be used by simple index scans, <quote>bitmap</quote> index scans,
+   and the optimizer.  In a bitmap scan
+   the output of several indexes can be combined via AND or OR rules,
+   so it is difficult to associate individual heap row fetches
+   with specific indexes when a bitmap scan is used.  Therefore, a bitmap
+   scan increments the
+   <structname>pg_stat_all_indexes</structname>.<structfield>idx_tup_read</structfield>
+   count(s) for the index(es) it uses, and it increments the
+   <structname>pg_stat_all_tables</structname>.<structfield>idx_tup_fetch</structfield>
+   count for the table, but it does not affect
+   <structname>pg_stat_all_indexes</structname>.<structfield>idx_tup_fetch</structfield>.
+   The optimizer also accesses indexes to check for supplied constants
+   whose values are outside the recorded range of the optimizer statistics
+   because the optimizer statistics might be stale.
+  </para>
+
+  <note>
+   <para>
+    The <structfield>idx_tup_read</structfield> and <structfield>idx_tup_fetch</structfield> counts
+    can be different even without any use of bitmap scans,
+    because <structfield>idx_tup_read</structfield> counts
+    index entries retrieved from the index while <structfield>idx_tup_fetch</structfield>
+    counts live rows fetched from the table.  The latter will be less if any
+    dead or not-yet-committed rows are fetched using the index, or if any
+    heap fetches are avoided by means of an index-only scan.
+   </para>
+  </note>
+  
+  
+  
+  ----------------------------------------------------------------------------------------------------------------
+  
+{
+  pricePerACUHour: 0.14,
+  pricePerACUHourIOO: 0.19,
+  pricePerGBMonth: 0.119,
+  pricePerGBMonthIOO: 0.268,
+  pricePer1MillionIO: 0.22,
+  onDemandPricePerHour: 2.506,
+  onDemandIOOPricePerHour: 3.258,
+  reservedPrices: {
+    '1yr-Partial Upfront-Quantity': 6962,
+    '1yr-Partial Upfront-Hrs': 0.7947,
+    '3yr-Partial Upfront-Quantity': 14773,
+    '3yr-Partial Upfront-Hrs': 0.5621,
+    '3yr-All Upfront-Quantity': 27237,
+    '3yr-All Upfront-Hrs': 0,
+    '1yr-All Upfront-Quantity': 13769,
+    '1yr-All Upfront-Hrs': 0,
+    '1yr-No Upfront-Hrs': 1.8616
+  }
+}
+
+  rds.describeDBClusters({DBClusterIdentifier}, async function(err, data) {
+    if (err) { console.error(err) }
+       console.log(JSON.stringify(data, null, 2))
+    })
+    
+    (5.1820 - 1.1048) / 5.1820 * 100
+    (5.6211 - 1.1048) / 5.6211 * 100
+
+StorageType: aurora-iopt1  
+
+Estimated serverless cost: 1.1048333333333333
+Estimated IO Optimized serverless cost: 1.4994166666666666
+CostOnDemand: 12.529999999999998
+CostOnDemandIOO: 16.29
+Cost1YrAllUpfront: 7.859018264840182
+Cost1YrAllUpfrontIOO: 0.03405574581430745
+Cost1YrPartialUpfront: 7.947244292237443
+Cost1YrPartialUpfrontIOO: 0.034438058599695585
+Cost1YrNoUpfront: 9.308
+Cost1YrNoUpfrontIOO: 0.040334666666666665
+Cost3YrAllUpfront: 5.182077625570777
+Cost3YrAllUpfrontIOO: 0.022455669710806703
+Cost3YrPartialUpfront: 5.621192541856926
+Cost3YrPartialUpfrontIOO: 0.02435850101471335
+Serverless cost start period: Sun Jul 16 2023 10:00:00 GMT+0200 (Central European Summer Time)
+Serverless cost end period: Sun Jul 16 2023 15:00:00 GMT+0200 (Central European Summer Time)
+Number of values: 300
+Suggested minimum ACUs: 1.5
+Suggested maximum ACUs based on the average and standard deviation: 2
+Suggested maximum ACUs based on the maximum ACU estimated: 2
+
+
+2023-08-02 14:50-15:50 snapshot_apg-bm_20230802141500_20230802151500.json
+2023-08-04 13:15-14:15 snapshot_apg-bm_20230804131500_20230804144500.json
