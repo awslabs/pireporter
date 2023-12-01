@@ -1,0 +1,20 @@
+{
+  "name": "pireporter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "pireporter.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.462.0",
+    "@aws-sdk/client-pi": "^3.462.0",
+    "@aws-sdk/client-pricing": "^3.462.0",
+    "@aws-sdk/client-rds": "^3.462.0",
+    "command-line-args": "^5.2.1",
+    "command-line-usage": "^7.0.1"
+  }
+}
