@@ -1,6 +1,7 @@
 # Snapshot files and html reports
 snapshot_*
 *.html
+notes.txt
 
 # Logs
 logs

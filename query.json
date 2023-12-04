@@ -1,7 +1,0 @@
-[
-    {
-        "Metric": "db.load.avg",
-        "GroupBy": { "Group": "db.sql_tokenized", "Limit": 10 },
-        "AdditionalMetrics" : ["db.sql_tokenized.stats.shared_blks_read_per_sec"]
-    }
-]
