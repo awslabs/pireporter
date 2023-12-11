@@ -31,13 +31,24 @@ The following data will be gathered into the snapshot files and represented in t
 * Compare Period Report: Enables comparison between two snapshots to quickly identify differences in metrics and SQL performance.
 
 
-##### Usage
-Clone this repo to local host and use node to execute the pireporter.js script or use the portable packaged version which do not require node installation.
+##### How to use
+
+1. Clone this repo to local host and use node.js to execute the pireporter.js script. It requires connection to npm repositories and installation of packages and node.js itself.
+
+```sh
+cd pireporter
+npm install
+node pireporter.js --help
+```
+
+2. Use the portable packaged version which do not require any installations. The packaged version was created using [pkg] which is open-source tool published under MIT License.
 
 ```sh
 cd portable
 ./pireporter-linux --help
 ```
+
+> Note: For security reasons you can also clone the repository and install `pkg` on a staging machine and build a packaged version yourself and then use it in your environment.
 
 
 ##### Synopsis
@@ -86,4 +97,4 @@ cd portable
     `$ pireporter --create-compare-report --snapshot snapshot_apg-bm_20230704150700_20230704194900.json --snapshot2 snapshot_apg-bm_20230619100000_20230619113000.json`
 
 
-
+[pkg]: <https://github.com/vercel/pkg>
