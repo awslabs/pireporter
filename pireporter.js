@@ -53,6 +53,7 @@ rds.describeDBClusters(params, function(err, data) {
 
 const optionDefinitions = [
   { name: 'help', description: 'Display this usage guide.', alias: 'h', type: Boolean},
+  { name: 'version', description: 'Display version number.', alias: 'v', type: Boolean},
   { name: 'rds-instance', alias: 'i', type: String, description: 'The RDS instance name to create snapshot.' },
   { name: 'create-snapshot', alias: 's', type: Boolean, description: 'Create snapshot.'},
   { name: 'start-time', type: String, description: 'Snapshot start time. Allowed format is ISO 8601 "YYYY-MM-DDTHH:MM". Seconds will be ignored if provided.'},
@@ -103,7 +104,7 @@ const sections = [
     ]}
   },
   {
-    content: 'Project home: {underline https://github.com/<TBD>}'
+    content: 'Project home: {underline https://github.com/awslabs/pireporter}'
   }
 ]
 
@@ -114,6 +115,12 @@ if (options.help) {
    console.log(commandLineUsage(sections))
    process.exit()
 }
+
+if (options.version) {
+   console.log(global.version)
+   process.exit()
+}
+
 
 // console.log(options);
 
