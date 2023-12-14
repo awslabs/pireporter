@@ -16,6 +16,7 @@
 global.version = "1.1"
 
 const fs = require('fs');
+const path = require('path');
 const commandLineArgs =  require('command-line-args');
 const commandLineUsage =  require('command-line-usage');
 
@@ -200,13 +201,40 @@ const endTime = new Date(2023, 3, 24, 13, 30, 0)
 //const startTime = new Date(2023, 6, 2, 10, 10, 0)
 //const endTime = new Date(2023, 6, 3, 20, 49, 0)
 
-const baselineNPfile = './baselineNetworkPerformance.json'
+const baselineNPfile = path.join(process.cwd(), 'baselineNetworkPerformance.json')
 if (fs.existsSync(baselineNPfile)) {
   var baselineNP = JSON.parse(fs.readFileSync(baselineNPfile, 'utf8'));
 } else {
   console.warn(`File ${baselineNPfile} cannot be found, some metrics will not be calculated.`)
 }
 
+
+
+
+const getSnapshotsDirectory = function (snapshotsDirectory) {
+  if(!snapshotsDirectory || snapshotsDirectory.trim() === '') {
+    snapshotsDirectory = path.join(process.cwd(), 'snapshots'); 
+  }
+
+  if (!fs.existsSync(snapshotsDirectory)) {
+    fs.mkdirSync(snapshotsDirectory);
+  }
+
+  return snapshotsDirectory
+}
+
+
+const getReportsDirectory = function (reportsDirectory) {
+  if(!reportsDirectory || reportsDirectory.trim() === '') {
+    reportsDirectory = path.join(process.cwd(), 'reports'); 
+  }
+
+  if (!fs.existsSync(reportsDirectory)) {
+    fs.mkdirSync(reportsDirectory);
+  }
+
+  return reportsDirectory
+}
 
 
 
@@ -2737,7 +2765,9 @@ if (options["create-report"]) {
     process.exit(1)
   }
   
-  fs.readFile(options.snapshot, 'utf8', async (err, data) => {
+  var snapshotLocation = path.isAbsolute(options.snapshot) ? options.snapshot : path.join(getSnapshotsDirectory(), options.snapshot)
+  
+  fs.readFile(snapshotLocation, 'utf8', async (err, data) => {
   if (err) {
     console.error('Error reading snapshot file:', err);
     process.exit(1)
@@ -2745,15 +2775,15 @@ if (options["create-report"]) {
   
   const snapshotObject = JSON.parse(data);
   
-  var htmlReportFileName = options.snapshot.replace(/\.json$/, ".html").replace(/^snapshot_/, "report_");
+  var htmlReportFileName = path.basename(snapshotLocation).replace(/\.json$/, ".html").replace(/^snapshot_/, "report_");
   
   var htmlReport = await generateHTMLReport(snapshotObject)
   
   try {
-       await fs.promises.writeFile(htmlReportFileName, htmlReport);
-       console.log(`PI report created and saved into ${htmlReportFileName}`);
+       await fs.promises.writeFile(path.join(getReportsDirectory(), htmlReportFileName), htmlReport);
+       console.log(`PI report created and saved into ${path.join(getReportsDirectory(), htmlReportFileName)}`);
       } catch (err) {
-       console.error(`Error writing file ${htmlReportFileName}:`, err);
+       console.error(`Error writing file ${path.join(getReportsDirectory(), htmlReportFileName)}:`, err);
   }
   
   process.exit()  
@@ -2777,14 +2807,16 @@ if (options["create-compare-report"]) {
     process.exit(1)
   }
 
+  var snapshot1Location = path.isAbsolute(options.snapshot) ? options.snapshot : path.join(getSnapshotsDirectory(), options.snapshot)
+  var snapshot2Location = path.isAbsolute(options.snapshot2) ? options.snapshot2 : path.join(getSnapshotsDirectory(), options.snapshot2)
 
-  fs.readFile(options.snapshot, 'utf8', async (err, data) => {
+  fs.readFile(snapshot1Location, 'utf8', async (err, data) => {
   if (err) {
     console.error('Error reading snapshot file:', err);
     process.exit(1)
   }
   
-     fs.readFile(options.snapshot2, 'utf8', async (err2, data2) => {
+     fs.readFile(snapshot2Location, 'utf8', async (err2, data2) => {
      if (err2) {
        console.error('Error reading snapshot file:', err2);
        process.exit(1)
@@ -2793,15 +2825,28 @@ if (options["create-compare-report"]) {
      const snapshotObject = JSON.parse(data);
      const snapshotObject2 = JSON.parse(data2);
      
-     var htmlReportFileName = options.snapshot.replace(/\.json$/, ".html").replace(/^snapshot_/, "compare_report_");
+     var snapshot1FileName = path.basename(options.snapshot)
+     var snapshot2FileName = path.basename(options.snapshot2)
+  
+     var regex = /snapshot_(.*)_(\d{14}_\d{14})\.json/;
+     // extract matching groups
+     var match1 = snapshot1FileName.match(regex);
+     var instanceName1 = match1[1];
+     var dateRange1 = match1[2];
+     var match2 = snapshot2FileName.match(regex);
+     var instanceName2 = match2[1];
+     var dateRange2 = match2[2];
+
+     var instanceNameString = (instanceName1 === instanceName2) ? instanceName1 : `${instanceName1}_${instanceName2}`
+     var htmlReportFileName = `compare_report_${instanceNameString}_${dateRange1}-${dateRange2}.html`;
      
      var htmlReport = await generateCompareHTMLReport(snapshotObject, snapshotObject2)
      
      try {
-          await fs.promises.writeFile(htmlReportFileName, htmlReport);
-          console.log(`PI report created and saved into ${htmlReportFileName}`);
+          await fs.promises.writeFile(path.join(getReportsDirectory(), htmlReportFileName), htmlReport);
+          console.log(`PI report created and saved into ${path.join(getReportsDirectory(), htmlReportFileName)}`);
          } catch (err) {
-          console.error(`Error writing file ${htmlReportFileName}:`, err);
+          console.error(`Error writing file ${path.join(getReportsDirectory(), htmlReportFileName)}:`, err);
      }
   
      process.exit()
@@ -2889,10 +2934,10 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName})
        const snapshotFileName = `snapshot_${InstanceName}_${convertDate(pi_snapshot.$META$.startTime)}_${convertDate(pi_snapshot.$META$.endTime)}.json`
        
        try {
-          await fs.promises.writeFile(snapshotFileName, JSON.stringify(pi_snapshot, null, 2));
-          console.log(`PI snapshot created and saved into ${snapshotFileName}`);
+          await fs.promises.writeFile(path.join(getSnapshotsDirectory(), snapshotFileName), JSON.stringify(pi_snapshot, null, 2));
+          console.log(`PI snapshot created and saved into ${path.join(getSnapshotsDirectory(), snapshotFileName)}`);
        } catch (err) {
-          console.error(`Error writing file ${snapshotFileName}:`, err);
+          console.error(`Error writing file ${path.join(getSnapshotsDirectory(), snapshotFileName)}:`, err);
        }
     
     }

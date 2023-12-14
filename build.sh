@@ -2,4 +2,4 @@
 
 mkdir -p ./portable
 cp baselineNetworkPerformance.json report.css ./portable
-pkg pireporter.js --out-path ./portable
+pkg pireporter.js -t node16-linux --out-path ./portable

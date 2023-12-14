@@ -14,7 +14,7 @@
 */
 
 const fs = require('fs');
-
+const path = require('path');
 
 // Get cusrrent date in de-DE format
 const getCurrDate = function() {
@@ -239,7 +239,7 @@ const generateHTMLReport = async function(snapshotObject) {
     const snapshotDurationMin = Math.floor((new Date(snapshotObject.$META$.endTime).getTime() - new Date(snapshotObject.$META$.startTime).getTime()) / 1000) / 60
 
     try {
-      var htmlStyle = await fs.promises.readFile('report.css', 'utf8')
+      var htmlStyle = await fs.promises.readFile(path.join(process.cwd(), 'report.css'), 'utf8')
     }
     catch (err) {
       console.error('Error reading file report.style:', err)
@@ -835,7 +835,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     const snapshotDurationMin2 = Math.floor((new Date(snapshotObject2.$META$.endTime).getTime() - new Date(snapshotObject2.$META$.startTime).getTime()) / 1000) / 60
 
     try {
-      var htmlStyle = await fs.promises.readFile('report.css', 'utf8')
+      var htmlStyle = await fs.promises.readFile(path.join(process.cwd(), 'report.css'), 'utf8')
     }
     catch (err) {
       console.error('Error reading file report.style:', err)
