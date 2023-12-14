@@ -1,4 +1,8 @@
 # Snapshot files and html reports
+reports/
+snapshots/
+portable/reports/
+portable/snapshots/
 snapshot_*
 *.html
 notes.txt
