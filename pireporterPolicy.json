@@ -1,0 +1,52 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "pireporter1",
+            "Effect": "Allow",
+            "Action": [
+                "pi:GetDimensionKeyDetails",
+                "pi:GetResourceMetadata",
+                "pi:ListAvailableResourceDimensions",
+                "pi:DescribeDimensionKeys",
+                "pi:ListAvailableResourceMetrics",
+                "pi:GetResourceMetrics",
+                "pricing:ListPriceLists",
+                "pricing:GetPriceListFileUrl",
+                "cloudwatch:GetMetricData",
+                "ec2:DescribeInstanceTypes",
+                "rds:DescribeOrderableDBInstanceOptions",
+                "rds:DescribeDBParameters"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "pireporter2",
+            "Effect": "Allow",
+            "Action": [
+                "rds:DownloadDBLogFilePortion",
+                "rds:DescribeDBInstances",
+                "rds:DescribeDBLogFiles"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "rds:db-tag/pireporter": "allow"
+                }
+            }
+        },
+        {
+            "Sid": "pireporter3",
+            "Effect": "Allow",
+            "Action": [
+                "rds:DescribeDBClusters"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "rds:cluster-tag/pireporter": "allow"
+                }
+            }
+        }
+    ]
+}
