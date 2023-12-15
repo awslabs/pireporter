@@ -17,6 +17,7 @@ global.version = "1.1"
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const commandLineArgs =  require('command-line-args');
 const commandLineUsage =  require('command-line-usage');
 
@@ -194,6 +195,7 @@ const ACUcalcIOmetricEffectivePeriod = 7
 const otherMemoryAllocationsPCT = 35
 const metricsCorrelationThreshold = 0.7
 const logFilesParallelDegree = 5
+const tempPriceFileRetentionDays = 7
 var resourceReservePct = options['res-reserve-pct'] || 30
 /*const startTime = new Date(2023, 3, 17, 11, 0, 0)
 const endTime = new Date(2023, 3, 24, 13, 30, 0)
@@ -857,44 +859,71 @@ const getPrices = async function (GeneralInformation) {
     } else {
       pricingDBEngine = 'Aurora MySQL'
     }
-
+    
     var PriceList
+    var tmpDir = os.tmpdir();
+    var tempFilePath = path.join(tmpDir, 'aws-pricelist.json');
+
+    async function fetchPricelist() {
+      try {
+             const command = new ListPriceListsCommand({
+                   ServiceCode: "AmazonRDS",
+                   EffectiveDate: new Date(),
+                   CurrencyCode: "USD"});
+             var response = await pricing.send(command);
+           } catch (error) {
+             console.log(error)
+             reject(error)
+           }
+       
+             const myPriceList = response.PriceLists.find(
+               item => item.CurrencyCode === "USD" && item.RegionCode === myRegion
+             );
+       
+           try {
+             const input = { // GetPriceListFileUrlRequest
+               PriceListArn: myPriceList.PriceListArn, // required
+               FileFormat: "json", // required
+             };
+             const command2 = new GetPriceListFileUrlCommand(input);
+             var response2 = await pricing.send(command2);
+           } catch (error) {
+             console.log(error)
+             reject(error)
+           }
+           
+           priceListGlobal = await fetchJSON(response2.Url)
+           fs.writeFileSync(tempFilePath, JSON.stringify(priceListGlobal), {flag: 'w'});
+           return priceListGlobal
+    }
 
     if (priceListGlobal) {
       
       PriceList = priceListGlobal
       
     } else {
-    try {
-      const command = new ListPriceListsCommand({
-            ServiceCode: "AmazonRDS",
-            EffectiveDate: new Date(),
-            CurrencyCode: "USD"});
-      var response = await pricing.send(command);
-    } catch (error) {
-      console.log(error)
-      reject(error)
-    }
-
-      const myPriceList = response.PriceLists.find(
-        item => item.CurrencyCode === "USD" && item.RegionCode === myRegion
-      );
-
-    try {
-      const input = { // GetPriceListFileUrlRequest
-        PriceListArn: myPriceList.PriceListArn, // required
-        FileFormat: "json", // required
-      };
-      const command2 = new GetPriceListFileUrlCommand(input);
-      var response2 = await pricing.send(command2);
-    } catch (error) {
-      console.log(error)
-      reject(error)
-    }
       
-      
-      priceListGlobal = await fetchJSON(response2.Url)
-      PriceList = priceListGlobal
+      if (fs.existsSync(tempFilePath)) {
+        
+        var fstats = fs.statSync(tempFilePath);
+        var fmodified = new Date(fstats.mtimeMs);
+        // Calculate age of file in days 
+        var now = new Date();
+        var fageInDays = Math.round((now - fmodified) / (1000 * 60 * 60 * 24));
+    
+        if(fageInDays <= tempPriceFileRetentionDays) {
+          console.log('Reding from file')
+          priceListGlobal = JSON.parse(fs.readFileSync(tempFilePath, 'utf8'));
+          PriceList = priceListGlobal
+        } else {
+           // File too old, fetch fresh data
+           PriceList = await fetchPricelist()
+        }
+        
+      } else {
+           // No temp file, fetch fresh
+           PriceList = await fetchPricelist()
+       }
      }
       
       var returnObject = {}
