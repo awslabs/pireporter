@@ -33,6 +33,14 @@ The following data will be gathered into the snapshot files and represented in t
 
 ##### How to use
 
+PI Reporter was tested on Linux x86. To run the tool, you can start an EC2 instance with any x86 Linux OS. 
+
+Create an IAM Policy called pireporterPolicy.json which is part of this repository. You can modify the policy to add additional conditions if needed. Then, tag the database instance you plan to use with a tag that has the key `pireporter` and value `allow`.  
+
+Attach the pireporterPolicy to the instance role of the EC2 instance where you plan to run the tool.
+
+There are two options to run pireporter:
+
 1. Clone this repo to local host and use node.js to execute the pireporter.js script. It requires connection to npm repositories and installation of packages and node.js itself.
 
 ```sh
@@ -49,6 +57,29 @@ cd portable
 ```
 
 > Note: For security reasons you can also clone the repository and install `pkg` on a staging machine and build a packaged version yourself and then use it in your environment.
+
+##### Security considerations
+
+All the permissions required to run pireporter are read-only and include only the mandatory ones.  
+
+The IAM policy pireporterPolicy.json is attached to this repository.
+
+The database log files will be downloaded and scanned for error messages if the `--include-logfiles` option is used.
+
+According to the policy, only instances and clusters with the Tag pireporter:allow (Key: pireporter Value: allow) can be accessed. That is why, use tagging to control which database instances can be accessed by the tool.
+
+
+##### General considerations
+
+###### PostgreSQL
+
+For RDS PostgreSQL and Amazon Aurora with PostgreSQL compatibility, consider the following:
+
+* Enable the `pg_stat_statements` extension to collect per-query statistics. This extension is enabled by default in Amazon Aurora with PostgreSQL compatibility.
+* By default, PostgreSQL databases truncate queries longer than 1,024 bytes. To increase the logged query size, change the `track_activity_query_size` parameter in the DB parameter group associated with your database instance. When you change this parameter, an instance reboot is required. 
+* By default, the `pg_stat_statements.track` parameter is set to the value `TOP`, which means only top-level queries will be captured. To capture all queries like ones running from inside stored functions and procedures, set this parameter to the value `ALL`.
+* Important performance consideration! The `pg_stat_statements` extension uses a hash table in memory to store the query statistics. If there are more unique queries than available memory, then a locking mechanism will kick in which can lead to contention and performance problems. The `pg_stat_statements.max` parameter controls the maximum number of unique statements that can be stored in memory. The default value is 5000. If you have more unique queries, set this accordingly. For example, if you estimate ~6000 unique queries, set it to 10000 to be safe.
+* Also, `blk_read_time` and `blk_write_time` are collected only when the additional `track_io_timing` parameter is enabled.
 
 
 ##### Synopsis

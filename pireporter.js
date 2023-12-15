@@ -89,7 +89,7 @@ const sections = [
   },
   {
     header: 'Options',
-    optionList: optionDefinitions
+    optionList: optionDefinitions.filter(o => o.name !== 'do-estimation')
   },
   {
     header: 'Examples',
