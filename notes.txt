@@ -135,5 +135,49 @@ Suggested maximum ACUs based on the average and standard deviation: 2
 Suggested maximum ACUs based on the maximum ACU estimated: 2
 
 
-2023-08-02 14:50-15:50 snapshot_apg-bm_20230802141500_20230802151500.json
-2023-08-04 13:15-14:15 snapshot_apg-bm_20230804131500_20230804144500.json
+
+
+
+
+
+
+
+mkdir -p ./portable
+cp baselineNetworkPerformance.json report.css ./portable
+pkg pireporter.js --out-path ./portable
+
+
+
+git config --global user.name "Aychin Gasimov"
+git config --global user.email aychin@amazon.com
+
+node /home/ec2-user/repolinter/repolinter/bin/repolinter.js lint ./ -r /home/ec2-user/repolinter/ospo-ruleset.json
+
+zip archive.zip * -x *.html snapshot_*.json node_modules portable price.json
+
+
+
+
+
+
+
+
+2023-08-02 14:50-15:50 
+2023-08-04 13:15-14:15 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
