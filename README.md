@@ -81,6 +81,23 @@ For RDS PostgreSQL and Amazon Aurora with PostgreSQL compatibility, consider the
 * Important performance consideration! The `pg_stat_statements` extension uses a hash table in memory to store the query statistics. If there are more unique queries than available memory, then a locking mechanism will kick in which can lead to contention and performance problems. The `pg_stat_statements.max` parameter controls the maximum number of unique statements that can be stored in memory. The default value is 5000. If you have more unique queries, set this accordingly. For example, if you estimate ~6000 unique queries, set it to 10000 to be safe.
 * Also, `blk_read_time` and `blk_write_time` are collected only when the additional `track_io_timing` parameter is enabled.
 
+If the snapshot start time and end time differs from the time you provided on command line, then make sure that the timezon of the host and the Aurora or RDS instance are same.
+
+Chech timezone on the host where you execute `pireporter`:
+```
+$ timedatectl | grep "Time zone"
+       Time zone: Europe/Berlin (CET, +0100)
+```
+Then connect to the Aurora or RDS instance and check timezone related parameter, in case of PostgreSQL it will be `timezone`:
+```
+postgres=> show timezone;
+   TimeZone
+---------------
+ Europe/Berlin
+(1 row)
+```
+In both cases we have `Europe/Berlin` timezone. If you have differnt values, then you need to adjust the timezone of the host.
+
 
 ##### Synopsis
 ```sh
@@ -126,6 +143,7 @@ For RDS PostgreSQL and Amazon Aurora with PostgreSQL compatibility, consider the
     `$ pireporter --create-report --snapshot snapshot_apg-bm_20230802145000_20230802155000.json`
 3. Create a compare periods report                                                                                                                                  
     `$ pireporter --create-compare-report --snapshot snapshot_apg-bm_20230704150700_20230704194900.json --snapshot2 snapshot_apg-bm_20230619100000_20230619113000.json`
+
 
 
 [pkg]: <https://github.com/vercel/pkg>

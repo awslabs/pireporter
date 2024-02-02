@@ -203,14 +203,6 @@ const endTime = new Date(2023, 3, 24, 13, 30, 0)
 //const startTime = new Date(2023, 6, 2, 10, 10, 0)
 //const endTime = new Date(2023, 6, 3, 20, 49, 0)
 
-const baselineNPfile = path.join(process.cwd(), 'baselineNetworkPerformance.json')
-if (fs.existsSync(baselineNPfile)) {
-  var baselineNP = JSON.parse(fs.readFileSync(baselineNPfile, 'utf8'));
-} else {
-  console.warn(`File ${baselineNPfile} cannot be found, some metrics will not be calculated.`)
-}
-
-
 
 
 const getSnapshotsDirectory = function (snapshotsDirectory) {
@@ -243,22 +235,20 @@ const getReportsDirectory = function (reportsDirectory) {
 const getEC2Details = (a) => {
   var EC2Class = a.substr(3);
   var request = ec2.describeInstanceTypes({InstanceTypes: [EC2Class]});
-  
   return request;
-  
 };
 
 
 
 // Get the PI range in seconds based on report range
 const getPIperiodSeconds = function (range) {
-  if ((range / 1) <= 100) {
+  if ((range / 1) <= 350) {
     return 1
-  } else if ((range / 60) <= 100) {
+  } else if ((range / 60) <= 350) {
     return 60
-  } else if ((range / 300) <= 100) {
+  } else if ((range / 300) <= 350) {
     return 300
-  } else if ((range / 3600) <= 100) {
+  } else if ((range / 3600) <= 350) {
     return 3600
   } else {
     return 86400 
@@ -684,7 +674,6 @@ const getVolumeAndIO = async function (cluster) {
   } catch(err) { 
     reject(err)
   }
-  
    
    resolve({volumeBytesUsed: parseInt(cwData.MetricDataResults.find(v => v.Id === 'volumeBytesUsed').Label.replace(/,/g, '')),
             volumeWriteIOPs: parseInt(cwData.MetricDataResults.find(v => v.Id === 'volumeWriteIOPs').Label.replace(/,/g, '')),
@@ -800,7 +789,8 @@ const getCWMetrics = async function (generalInformation) {
     reject(err)
   }
   
-
+   console.log('CW data', pseconds, cwMetrics.MetricDataResults[0].Timestamps.length)
+   
    resolve(cwMetrics)  
 
   })
@@ -810,37 +800,23 @@ const getCWMetrics = async function (generalInformation) {
 
 const calcNetworkPerformanceLimits = function (generalInformation, maxKnownNetworkTrafficBytes) {
   var res = {}
-  var burstable = false
-  var Gbps
-  const matches = generalInformation.EC2Details.NetworkPerformance.match(/\d+(\.\d+)?/);
-  if (matches) {
-     Gbps = parseFloat(matches[0]);
-     if (generalInformation.EC2Details.NetworkPerformance.startsWith("Up to")) {
-       burstable = true
-     }
-  } else {
-     Gbps = 2.5;
-     burstable = true
-     baselineGbps = 0.5
-  }
-
-  var trafficToMaxPct = (maxKnownNetworkTrafficBytes / 1024 / 1024)  /  (Gbps * 125) * 100;
-  res["networkMaxMBps"] = (Gbps * 125)
-  if (burstable && baselineNP) { 
-    var baselineGbps = baselineNP.Aurora.find(v => v.type === generalInformation.DBInstanceClass).value
-    if (baselineGbps) {
-       res["baselineMBps"] = baselineGbps * 125
-    }
+  var burstable = generalInformation.EC2Details.BurstableNetworkPerformance === 'yes' ? true : false
+  var MaxNetworkPerformanceMbps = generalInformation.EC2Details.NetworkPerformanceMbps
+  
+  var trafficToMaxPct = (maxKnownNetworkTrafficBytes / 1024 / 1024)  /  (MaxNetworkPerformanceMbps / 8) * 100;
+  res["networkMaxMBps"] = MaxNetworkPerformanceMbps / 8
+  if (burstable) { 
+     res["baselineMBps"] = generalInformation.EC2Details.NetworkBaselineMbps / 8
   }
 
   if (maxKnownNetworkTrafficBytes) {
     res["trafficToMaxPct"] = trafficToMaxPct
-    res["diffFromMaxMBps"] = (Gbps * 125) - (maxKnownNetworkTrafficBytes / 1024 / 1024)
+    res["diffFromMaxMBps"] = (MaxNetworkPerformanceMbps / 8) - (maxKnownNetworkTrafficBytes / 1024 / 1024)
     
-    if (burstable && baselineNP && baselineGbps) { 
-      var trafficToBaselinePct = (maxKnownNetworkTrafficBytes / 1024 / 1024)  /  (baselineGbps * 125) * 100;
+    if (burstable) { 
+      var trafficToBaselinePct = (maxKnownNetworkTrafficBytes / 1024 / 1024)  /  (generalInformation.EC2Details.NetworkBaselineMbps / 8) * 100;
       res["trafficToBaselinePct"] = trafficToBaselinePct
-      res["diffFromBaselineMBps"] = (baselineGbps * 125) - (maxKnownNetworkTrafficBytes / 1024 / 1024)
+      res["diffFromBaselineMBps"] = (generalInformation.EC2Details.NetworkBaselineMbps / 8) - (maxKnownNetworkTrafficBytes / 1024 / 1024)
     }
   }
   
@@ -912,7 +888,7 @@ const getPrices = async function (GeneralInformation) {
         var fageInDays = Math.round((now - fmodified) / (1000 * 60 * 60 * 24));
     
         if(fageInDays <= tempPriceFileRetentionDays) {
-          console.log('Reding from file')
+          // Reading price list from temp
           priceListGlobal = JSON.parse(fs.readFileSync(tempFilePath, 'utf8'));
           PriceList = priceListGlobal
         } else {
@@ -1324,6 +1300,8 @@ const counterMetrics = async function (generalInformation) {
           {Metric: "os.cpuUtilization.steal.avg"},{Metric: "os.cpuUtilization.steal.max"},{Metric: "os.cpuUtilization.steal.min"}
         ]
       });
+      
+      console.log('OS Metrics', PI_result)
       
       OS_MetricList.push(...PI_result.MetricList)
       
@@ -1977,10 +1955,10 @@ const counterMetrics = async function (generalInformation) {
                            desc: `The percentage of actual network traffic compared to the maximum possible network throughput. Actual netwrok traffic for the snapshot period was ${((networkThroughputBytes + storageNetworkThroughputBytes) / 1024 / 1024).toFixed(2)} MB/s and the maximum network throughput for this instance class is ${networkLimits.networkMaxMBps} MB/s. ${networkLimits.burstable ? 'Consider that this instace class has a burstable network throughput.' : ''}`},
     realTrafficToBaselinePct: networkLimits.burstable && networkLimits.trafficToBaselinePct ? {
                                     value: networkLimits.trafficToBaselinePct.toFixed(5),
-                            unit: 'Percent',
-                           label: 'Pct network traffic to estimated baseline', 
-                           desc: `The percentage of actual network traffic compared to the baseline network throughput. The estimated baseline network throughput for this instance class is ${networkLimits.baselineMBps} MB/s. Consider that this baseline is only estimation and can differ from actual values.}`
-                           } : undefined,
+                                    unit: 'Percent',
+                                    label: 'Pct network traffic to estimated baseline', 
+                                    desc: `The percentage of actual network traffic compared to the baseline network throughput. The estimated baseline network throughput for this instance class is ${networkLimits.baselineMBps} MB/s. Consider that this baseline is only estimation and can differ from actual values.}`
+                              } : undefined,
     AAStoBackends: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Label.replace(/,/g, '')) / DB_Aurora_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg * 100).toFixed(2),
                            unit: 'Percent',
                            label: 'Pct active sessions to connections', 
@@ -2022,7 +2000,6 @@ const counterMetrics = async function (generalInformation) {
   // Suggest instance
   const getSuggestInstance = async function (GeneralInformation, db_metrics, os_metrics, additional_metrics, static_metrics) {
     return new Promise (async (resolve, reject) => {
-   //#AG
    
       var res = {}
    
@@ -2242,10 +2219,13 @@ rds.describeDBInstances(params, async function(err, data) {
               ProcessorInfo,
               VCpuInfo,
               MemoryInfo,
+              EbsInfo,
               NetworkInfo
         } = EC2InstanceDetails;
     }
 
+    let NetworkMaxBandwidthMbps = NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.PeakBandwidthInGbps}, 0) * 1000;
+    let NetworkBaselineBandwidthMbps = NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.BaselineBandwidthInGbps}, 0) * 1000;
     
     var GeneralInformation = {
           DBInstanceIdentifier,
@@ -2277,7 +2257,16 @@ rds.describeDBInstances(params, async function(err, data) {
               DefaultVCpus: VCpuInfo.DefaultVCpus,
               DefaultCores: VCpuInfo.DefaultCores,
               MemorySizeInMiB: MemoryInfo.SizeInMiB,
-              NetworkPerformance: NetworkInfo.NetworkPerformance
+              NetworkPerformance: NetworkInfo.NetworkPerformance,
+              NetworkPerformanceMbps: NetworkMaxBandwidthMbps,
+              NetworkBaselineMbps: NetworkBaselineBandwidthMbps,
+              BurstableNetworkPerformance: (NetworkMaxBandwidthMbps > NetworkBaselineBandwidthMbps) ? "yes" : "no",
+              EBSOptimized: EbsInfo.EbsOptimizedSupport === "default" ? "yes" : "no",
+              EBSMaximumBandwidthInMbps: EbsInfo.EbsOptimizedInfo.MaximumBandwidthInMbps,
+              EBSBaselineBandwidthInMbps: EbsInfo.EbsOptimizedInfo.BaselineBandwidthInMbps,
+              EBSBurstable: (EbsInfo.EbsOptimizedInfo.MaximumBandwidthInMbps > EbsInfo.EbsOptimizedInfo.BaselineBandwidthInMbps) ? "yes" : "no",
+              EBSMaximumIops: EbsInfo.EbsOptimizedInfo.MaximumIops,
+              EBSBaselineIops: EbsInfo.EbsOptimizedInfo.BaselineIops
             }
           };
       
@@ -2292,71 +2281,85 @@ rds.describeDBInstances(params, async function(err, data) {
 }
 
 
+const getResourceMetricsPerMinute = async function (DbiResourceId, iMetricQueries) {
+    // PI can return maximum 350 data points.
+    var PIMetricsIntervalSecs = 60
+    var dateIntervals = generateDateRanges(60 * 350)
+    
+    var ResponseAccumulator = undefined
+    for (let i = 0; i < dateIntervals.length; i++) {
+    
+      try {
+        var ResponseLoop = await pi.getResourceMetrics({
+              ServiceType: "RDS",
+              Identifier: DbiResourceId,
+              StartTime: dateIntervals[i].start,
+              EndTime: dateIntervals[i].end,
+              PeriodInSeconds: PIMetricsIntervalSecs,
+              MetricQueries: iMetricQueries
+        });
+        
+      } catch (error) {
+          console.log(`Error: ${error}`)
+      }   
+      
+      if (i === 0) { 
+        ResponseAccumulator = ResponseLoop
+      } else {
+        ResponseAccumulator.MetricList.forEach((metric1) => {
+           const matchingMetric2 = ResponseLoop.MetricList.find(metric2 => JSON.stringify(metric2.Key) === JSON.stringify(metric1.Key));
+           // If found, concatenate the DataPoints arrays
+           if (matchingMetric2) {
+              metric1.DataPoints = metric1.DataPoints.concat(matchingMetric2.DataPoints);
+           }
+        });
+        
+      }
+      
+      if (i === dateIntervals.length - 1) ResponseAccumulator.AlignedEndTime = ResponseLoop.AlignedEndTime
 
+    }
+    
+  return ResponseAccumulator
+}
+    
 
+/*
 const getWaitEvents = async function (GeneralInformation) {
   return new Promise(async (resolve, reject) => {
 
-    try {
-    var PIdescribeDimensionKeys = await pi.describeDimensionKeys({
-      ServiceType: "RDS",
-      Identifier: GeneralInformation.DbiResourceId,
-      StartTime: startTime,
-      EndTime: endTime,
-      Metric: "db.load.avg",
-      PeriodInSeconds: 60,
-      GroupBy: {
-        Group: "db.wait_event"
-      }
-    });
-    } catch (error) {
-         console.log(error);
-         reject(error)
-    }
+    //var PIgetResourceMetadata = await pi.getResourceMetadata({
+    //  ServiceType: "RDS",
+    //  Identifier: GeneralInformation.DbiResourceId
+    //});
     
-    var PIgetResourceMetadata = await pi.getResourceMetadata({
-      ServiceType: "RDS",
-      Identifier: GeneralInformation.DbiResourceId
-    });
-    
-    var PITOPWaitEventsRaw = await pi.getResourceMetrics({
-      ServiceType: "RDS",
-      Identifier: GeneralInformation.DbiResourceId,
-      StartTime: startTime,
-      EndTime: endTime,
-      PeriodInSeconds: 60,
-      MetricQueries: [
+    var PITOPWaitEventsRaw = await getResourceMetricsPerMinute(GeneralInformation.DbiResourceId, [
         {
           Metric: "db.load.avg",
           GroupBy: { "Group": "db.wait_event" }
         }
-      ]
-    });
+      ])
+      
+   //var PITOPWaitEventsRaw = await pi.getResourceMetrics({
+  //    ServiceType: "RDS",
+    //  Identifier: GeneralInformation.DbiResourceId,
+    //  StartTime: startTime,
+    //  EndTime: endTime,
+    //  PeriodInSeconds: 300,
+    //  MetricQueries: [
+    //    {
+    //      Metric: "db.load.avg",
+    //      GroupBy: { "Group": "db.wait_event" }
+    //    }
+    //  ]
+    //});
     
+    
+    console.log('StartTime', startTime)
+    console.log('EndTime', endTime)
+    console.log('Res', PITOPWaitEventsRaw)
+    console.log('Res', PITOPWaitEventsRaw.MetricList[0].DataPoints.length)
 
-    var PITOPdbload = await pi.getResourceMetrics({
-      ServiceType: "RDS",
-      Identifier: GeneralInformation.DbiResourceId,
-      StartTime: startTime,
-      EndTime: endTime,
-      PeriodInSeconds: 60,
-      MetricQueries: [
-        {
-          Metric: "db.load.avg"
-        }
-      ]
-    });
-    
-    
-    
-    //console.log('Output', 'PITOPdbload', JSON.stringify(PITOPdbload, null, 2));
-    //console.log('Output', 'PIosCPU', JSON.stringify(PIosCPU, null, 2));
-    //console.log('Output', 'realisticACUs', JSON.stringify(realisticACUs, null, 2));
-    //console.log('Output', 'PIdescribeDimensionKeys', JSON.stringify(PIdescribeDimensionKeys, null, 2));
-    //console.log('Output', 'PIgetResourceMetadata', JSON.stringify(PIgetResourceMetadata, null, 2));
-    //console.log('Output', 'PIlistAvailableResourceMetrics', JSON.stringify(PIlistAvailableResourceMetrics, null, 2));
-    //console.log('Output', 'Top waits raw', JSON.stringify(PITOPWaitEventsRaw, null, 2));
-    
     var returnObject = {}
     
     returnObject['AlignedStartTime'] = PITOPWaitEventsRaw.AlignedStartTime;
@@ -2400,45 +2403,87 @@ const getWaitEvents = async function (GeneralInformation) {
 
   })
 }
+*/
 
 
-
-
-const getSQLs = async function (GeneralInformation) {
+const getWaitsAndSQLs = async function (GeneralInformation) {
   return new Promise(async (resolve, reject) => {
 
+  const pseconds = getPIperiodSeconds(periodInSeconds)
 
-var dbLoadAvgRaw = await pi.getResourceMetrics({
+
+    var returnWaitsObject = {}
+    
+    var PITOPWaitEventsRaw = await pi.getResourceMetrics({
       ServiceType: "RDS",
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
       EndTime: endTime,
-      PeriodInSeconds: 60,
+      PeriodInSeconds: pseconds,
       MetricQueries: [
         {
-          Metric: "db.load.avg"
+          Metric: "db.load.avg",
+          GroupBy: { "Group": "db.wait_event" }
         }
       ]
     });
-
-
-var AAS, AASSum;
-
-dbLoadAvgRaw.MetricList.forEach((Metric, i) => {
+    
+    returnWaitsObject['AlignedStartTime'] = PITOPWaitEventsRaw.AlignedStartTime;
+    returnWaitsObject['AlignedEndTime'] = PITOPWaitEventsRaw.AlignedEndTime;
+    var WallClockTimeSec = (PITOPWaitEventsRaw.AlignedEndTime-PITOPWaitEventsRaw.AlignedStartTime) / 1000;
+    returnWaitsObject['WallClockTimeSec'] = WallClockTimeSec;
+    
+    var AAS, AASSum, DBTimeSec, TopEvents = [];
+    
+    // Calculate AAS and DBTime including idle Timout events
+    /*PITOPWaitEventsRaw.MetricList.forEach((Metric, i) => {
       if (Metric.Key.Metric === "db.load.avg" && Metric.Key.Dimensions === undefined) {
           AASSum = Metric.DataPoints.reduce((a, b) => a + b.Value, 0);
           AAS = AASSum / Metric.DataPoints.length;
+          DBTimeSec = AASSum * pseconds;
+      }
+    });*/
+
+    // Calculate AAS and DBTime excluding idle Timout events
+    AASSum = 0
+    PITOPWaitEventsRaw.MetricList.forEach((Metric, i) => {
+      if (Metric.Key.Dimensions && Metric.Key.Dimensions["db.wait_event.type"] !== 'Timeout') {
+          AASSum = AASSum + Metric.DataPoints.reduce((a, b) => a + b.Value, 0);
       }
     });
+    AAS = AASSum / PITOPWaitEventsRaw.MetricList[0].DataPoints.length;
+    DBTimeSec = AASSum * pseconds;
+    
+    AAS = AAS.toFixed(2);
+    DBTimeSec = Math.round(DBTimeSec);
+    
+    PITOPWaitEventsRaw.MetricList.forEach((Metric, i) => {
+      if (Metric.Key.Dimensions && Metric.Key.Dimensions["db.wait_event.type"] !== 'Timeout') {
+          var SUMDataPoints = Metric.DataPoints.reduce((a, b) => a + b.Value, 0);
+          var MetricTimeSec = SUMDataPoints * pseconds;
+          MetricTimeSec = Math.round(MetricTimeSec);
+          var PctDBTime = MetricTimeSec * 100 / DBTimeSec;
+          TopEvents.push({
+                          event_name: Metric.Key.Dimensions["db.wait_event.name"],
+                          event_type: Metric.Key.Dimensions["db.wait_event.type"],
+                          metric_time_sec: MetricTimeSec,
+                          pct_db_time: PctDBTime.toFixed(2)
+                        });
+      }
+    });
+    
+    returnWaitsObject['AverageActiveSessions'] = parseFloat(AAS)
+    returnWaitsObject['DBTimeSeconds'] = DBTimeSec
+    returnWaitsObject['TopEvents'] = TopEvents
+    
 
-
-try {
+  try {
     var PIDescDimKeysRaw = await pi.describeDimensionKeys({
       ServiceType: "RDS",
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
       EndTime: endTime,
-      PeriodInSeconds: 60,
+      PeriodInSeconds: pseconds,
       Metric: 'db.load.avg',
       GroupBy: { Group: 'db.sql_tokenized', Limit: 25 },
       AdditionalMetrics: ['db.sql_tokenized.stats.calls_per_sec.avg',
@@ -2500,7 +2545,7 @@ try {
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
       EndTime: endTime,
-      PeriodInSeconds: 60,
+      PeriodInSeconds: pseconds,
       Metric: 'db.load.avg',
       GroupBy: { Group: 'db.sql', Limit: 25 }
     });
@@ -2510,7 +2555,8 @@ try {
          console.log(error);
          reject(error);
     }
-    //console.log('Output', 'sqlids', JSON.stringify(sqlids, null, 2));
+  
+  console.log('Output', 'sqlids', sqlids);
 
   var sqlTextFullPromises = sqlids.Keys.map(async Key => {
     var SQLTextsFullRaw = await pi.getDimensionKeyDetails({
@@ -2552,7 +2598,7 @@ try {
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
       EndTime: endTime,
-      PeriodInSeconds: 60,
+      PeriodInSeconds: pseconds,
       Metric: 'db.load.avg',
       GroupBy: { Group: 'db.sql_tokenized', Limit: 25 },
       PartitionBy: { 
@@ -2593,7 +2639,7 @@ try {
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
       EndTime: endTime,
-      PeriodInSeconds: 60,
+      PeriodInSeconds: pseconds,
       Metric: 'db.load.avg',
       GroupBy: { Group: 'db.sql_tokenized', Limit: 25 },
       PartitionBy: { 
@@ -2631,7 +2677,7 @@ try {
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
       EndTime: endTime,
-      PeriodInSeconds: 60,
+      PeriodInSeconds: pseconds,
       Metric: 'db.load.avg',
       GroupBy: { Group: 'db.sql_tokenized', Limit: 25 },
       PartitionBy: { 
@@ -2671,15 +2717,15 @@ try {
     
     console.log('SUM', sum)*/
     
-    var returnObject = {}
+    var returnSQLStatsObject = {}
 
-    returnObject['SQLs'] = SQLs
-    returnObject['LoadByDatabase'] = LoadByDB
-    returnObject['LoadByUser'] = LoadByUser
-    returnObject['Waits'] = SQLWaitEvents
-    returnObject['SQLTextFull'] = sqlTextFull
+    returnSQLStatsObject['SQLs'] = SQLs
+    returnSQLStatsObject['LoadByDatabase'] = LoadByDB
+    returnSQLStatsObject['LoadByUser'] = LoadByUser
+    returnSQLStatsObject['Waits'] = SQLWaitEvents
+    returnSQLStatsObject['SQLTextFull'] = sqlTextFull
 
-    resolve(returnObject);
+    resolve({waits: returnWaitsObject, sqls: returnSQLStatsObject});
 
   })
 }
@@ -2725,6 +2771,7 @@ const getDBLogFiles = async function (GeneralInformation) {
             const lines = logfile.LogFileData.split("\n");
         
             const filteredLines = lines.filter((line) => {
+              console.log('logfile line', line)
               const timestamp = line.split("UTC::")[0].trim();
               const lineTimestamp = new Date(timestamp).getTime();
               const containsKWords = /CRITICAL|ERROR/i.test(line);
@@ -2926,8 +2973,7 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName})
                  Also blk_read_time and blk_write_time are collected only when additional track_io_timing setting is enabled.`);*/
     
 
-    var promises = [getSQLs.bind(null, GeneralInformation), 
-                    getWaitEvents.bind(null, GeneralInformation), 
+    var promises = [getWaitsAndSQLs.bind(null, GeneralInformation),
                     counterMetrics.bind(null, GeneralInformation), 
                     getDBParameters.bind(null, GeneralInformation)]
     
@@ -2944,16 +2990,16 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName})
        
        var pi_snapshot = {
            $META$: {
-              startTime: results[1].AlignedStartTime,
-              endTime: results[1].AlignedEndTime,
+              startTime: results[0].waits.AlignedStartTime,
+              endTime: results[0].waits.AlignedEndTime,
               instanceName: InstanceName,
               commandLineOptions: options
            },
            GeneralInformation: GeneralInformation,
-           NonDefParameters: results[3],
-           WaitEvents: results[1],
-           Metrics: results[2],
-           SQLs: results[0]
+           NonDefParameters: results[2],
+           WaitEvents: results[0].waits,
+           Metrics: results[1],
+           SQLs: results[0].sqls
        }
        
        if (options["include-logfiles"]) pi_snapshot['LogFileAnalysis'] = results[4]
