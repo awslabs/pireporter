@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "1.1"
+global.version = "1.5"
 
 const fs = require('fs');
 const path = require('path');
@@ -26,31 +26,27 @@ const { RDS,
         DescribeDBLogFilesCommand, 
         DownloadDBLogFilePortionCommand, 
         DescribeOrderableDBInstanceOptionsCommand,
-        DescribeDBClustersCommand } = require("@aws-sdk/client-rds");
+        DescribeDBClustersCommand,
+        DescribeGlobalClustersCommand } = require("@aws-sdk/client-rds");
 const { EC2 } = require("@aws-sdk/client-ec2");
 const { PI } = require("@aws-sdk/client-pi");
 const { PricingClient, GetPriceListFileUrlCommand, DescribeServicesCommand, ListPriceListsCommand } = require("@aws-sdk/client-pricing");
 const { CloudWatchClient, GetMetricDataCommand } = require("@aws-sdk/client-cloudwatch");
 const https = require('https');
+const http = require('http');
+const { generateHTMLReport, generateCompareHTMLReport } = require("./generateHTML");
 
-const { generateHTMLReport, generateCompareHTMLReport } = require("./generateHTML")
+var pricing = new PricingClient({apiVersion: '2017-10-15', region: 'us-east-1'});
 
-const myRegion = 'eu-central-1'
+// Setting region to the AWS_REGION environment variable. In the function getGeneralInformation we will check for its value, if its empty, then we will get 
+// the region from the instance medatada using IMDSv2
+var myRegion = process.env.AWS_REGION
 
-const rds = new RDS({apiVersion: '2014-10-31', region: myRegion});
-const ec2 = new EC2({apiVersion: '2016-11-15', region: myRegion});
-const pi  = new  PI({apiVersion: '2018-02-27', region: myRegion});
-const pricing = new PricingClient({apiVersion: '2017-10-15', region: 'us-east-1'});
-const cw = new CloudWatchClient({apiVersion: '2010-08-01', region: myRegion});
-/*var params = {
-  DBClusterIdentifier: 'apg-bm-cluster'
-}
-
-rds.describeDBClusters(params, function(err, data) {
-  if (err) console.log(err, err.stack); // an error occurred
-  else     console.log('Output', JSON.stringify(data.DBClusters, null, 2));           // successful response
-});
-*/
+// Defining global variables. The APIs will be set in getGeneralInformation function.
+var rds
+var ec2
+var pi
+var cw
 
 
 const optionDefinitions = [
@@ -60,7 +56,8 @@ const optionDefinitions = [
   { name: 'create-snapshot', alias: 's', type: Boolean, description: 'Create snapshot.'},
   { name: 'start-time', type: String, description: 'Snapshot start time. Allowed format is ISO 8601 "YYYY-MM-DDTHH:MM". Seconds will be ignored if provided.'},
   { name: 'end-time', type: String, description: 'Snapshot end time. Same format as for start time.'},
-  { name: 'res-reserve-pct', type: Number, description: 'Specify the percentage of additional resources to reserve above the maximum metrics when generating instance type recommendations. Default is 30.'},
+  { name: 'res-reserve-pct', type: Number, description: 'Specify the percentage of additional resources to reserve above the maximum metrics when generating instance type recommendations. Default is 15.'},
+  { name: 'use-2sd-values', type: Boolean, description: 'To calculate the required resource for the workload, consider the average value plus 2 standard deviations (SDs). By default the maximum usage is used.'},
   { name: 'comment', alias: 'm', type: String, description: 'Provide a comment to associate with the snapshot.'},
   { name: 'create-report', alias: 'r', type: Boolean, description: 'Create HTML report for snapshot.'},
   { name: 'create-compare-report', alias: 'c', type: Boolean, description: 'Create compare snapshots HTML report for two snapshots.'},
@@ -196,13 +193,84 @@ const otherMemoryAllocationsPCT = 35
 const metricsCorrelationThreshold = 0.7
 const logFilesParallelDegree = 5
 const tempPriceFileRetentionDays = 7
-var resourceReservePct = options['res-reserve-pct'] || 30
+var resourceReservePct = options['res-reserve-pct'] || 15
 /*const startTime = new Date(2023, 3, 17, 11, 0, 0)
 const endTime = new Date(2023, 3, 24, 13, 30, 0)
 */
 //const startTime = new Date(2023, 6, 2, 10, 10, 0)
 //const endTime = new Date(2023, 6, 3, 20, 49, 0)
 
+
+const getToken = function () {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: '169.254.169.254',
+      port: 80,
+      path: '/latest/api/token',
+      method: 'PUT',
+      headers: {
+        'X-aws-ec2-metadata-token-ttl-seconds': '21600'
+      }
+    };
+
+    const req = http.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        resolve(data);
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.end();
+  });
+};
+
+// Function to get the region
+const getCurrentRegion = async function () {
+  return new Promise(async (resolve, reject) => {
+ 
+  try {
+    const token = await getToken();
+    const options = {
+      hostname: '169.254.169.254',
+      port: 80,
+      path: '/latest/meta-data/placement/region',
+      method: 'GET',
+      headers: {
+        'X-aws-ec2-metadata-token': token
+      }
+    };
+
+    const req = http.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        resolve(data)
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error)
+    });
+
+    req.end();
+  } catch (error) {
+    console.error('Error:', error);
+  }
+ });
+};
 
 
 const getSnapshotsDirectory = function (snapshotsDirectory) {
@@ -460,6 +528,29 @@ const calculateSum = function (numbers) {
   return sum;
 }
 
+
+const calculateSumArrays = function (numbers1, numbers2) {
+  if (!Array.isArray(numbers1) || numbers1.length === 0) {
+    return undefined;
+  }
+  const result = [];
+  for (let i=0; i<numbers1.length; i++) {
+    result.push(numbers1[i] + numbers2[i]);
+  }
+  return result;
+}
+
+
+const calculateArrayMultiply = function (numbers, v) {
+  if (!Array.isArray(numbers) || numbers.length === 0) {
+    return undefined;
+  }
+  const result = [];
+  for (let i=0; i<numbers.length; i++) {
+    result.push(numbers[i] * v);
+  }
+  return result;
+}
 
 
 function calculateStandardDeviation(numbers, mean) {
@@ -727,6 +818,37 @@ const getServerlessUsageCW = async function (GeneralInformation) {
 
 
 
+const getWriteThroughput = async function (Identifier) {
+  return new Promise (async (resolve, reject) => {
+
+    const pseconds = getPIperiodSeconds(periodInSeconds)
+    
+    const cwCommand = new GetMetricDataCommand({
+     StartTime: startTime,
+     EndTime: endTime,
+     MetricDataQueries: [
+        {Id: "writeThroughput", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "WriteThroughput",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: Identifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Maximum"}}
+     ]
+  });
+  
+  
+  try {
+    var MetricValues = await cw.send(cwCommand);
+  } catch(err) { 
+    reject(err)
+  }
+  
+   
+   //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
+   
+   resolve(MetricValues.MetricDataResults[0].Values)  
+
+  })
+}
+
 
 
 const getCWMetrics = async function (generalInformation) {
@@ -743,35 +865,43 @@ const getCWMetrics = async function (generalInformation) {
      EndTime: endTime,
      MetricDataQueries: [
         {Id: "networkThroughput",  Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "NetworkThroughput",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Maximum"}},
+        {Id: "auroraEstimatedSharedMemoryBytes",  Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "AuroraEstimatedSharedMemoryBytes",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Maximum"}},
         {Id: "storageNetworkThroughput", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "StorageNetworkThroughput",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Maximum"}},
+        {Id: "writeThroughput", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "WriteThroughput",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Maximum"}},
         {Id: "engineUptime", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "EngineUptime",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Maximum"}},
         {Id: "replicationSlotDiskUsage", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "ReplicationSlotDiskUsage",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Maximum"}},
         {Id: "snapshotStorageUsed", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "SnapshotStorageUsed",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Maximum"}},
         {Id: "transactionLogsDiskUsage", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "TransactionLogsDiskUsage",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Maximum"}},
         {Id: "dbLoad", Label: "${AVG}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "DBLoad",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Average"}},
         {Id: "bufferCacheHitRatio", Label: "${AVG}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "BufferCacheHitRatio",
-                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: InstanceName}]},
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
                                                     Period: pseconds,
                                                     Stat: "Average"}},
         {Id: "volumeBytesUsed", Label: "${LAST}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "VolumeBytesUsed",
@@ -789,7 +919,8 @@ const getCWMetrics = async function (generalInformation) {
     reject(err)
   }
   
-   console.log('CW data', pseconds, cwMetrics.MetricDataResults[0].Timestamps.length)
+   
+   //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
    
    resolve(cwMetrics)  
 
@@ -1256,6 +1387,46 @@ const counterMetrics = async function (generalInformation) {
   }
   
   
+  
+  
+  
+  const calc2SDValue = function (numbers) {
+    // calculate mean
+    const n = numbers.length;
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      sum += numbers[i]; 
+    }
+    const mean = sum / n;
+
+    // calculate standard deviation
+    let stddevSum = 0;
+    for (let i = 0; i < n ; i++){
+     stddevSum += Math.pow(numbers[i] - mean, 2);
+    }
+    
+    const stddev = Math.sqrt(stddevSum/n);
+    return mean + (stddev * 2)
+
+  }
+  
+  
+  const get2SDValue = function (dataSet, metric) {
+    var dataPointsArr = dataSet.filter(object => object.Key.Metric.startsWith(metric+'.'))
+
+    const getValues = function (arr) {
+      return arr.map(dataPoint => dataPoint.Value)
+    }
+    if (dataPointsArr.length === 3) {
+        return calc2SDValue(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.max`).DataPoints))
+        
+    } else {
+        return -1
+    }
+    
+  }
+  
+  
   const getMetricData = function (dataSet, metric) {
     var dataPointsArr = dataSet.filter(object => object.Key.Metric.startsWith(metric+'.'))
     var res = {}
@@ -1301,7 +1472,7 @@ const counterMetrics = async function (generalInformation) {
         ]
       });
       
-      console.log('OS Metrics', PI_result)
+      //console.log('OS Metrics', PI_result)
       
       OS_MetricList.push(...PI_result.MetricList)
       
@@ -1925,10 +2096,65 @@ const counterMetrics = async function (generalInformation) {
   
   
   var cwData = await getCWMetrics(generalInformation)
+  // Check if cloudWatch returns data
+  if (cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Values.length === 0) {
+    console.log('No data returns from CloudWatch for this timeframe. Cannot continue.')
+    process.exit(1)
+  }
   
-  var networkThroughputBytes = parseInt(cwData.MetricDataResults.find(v => v.Id === 'networkThroughput').Label.replace(/,/g, ''))
-  var storageNetworkThroughputBytes = parseInt(cwData.MetricDataResults.find(v => v.Id === 'storageNetworkThroughput').Label.replace(/,/g, ''))
-  var networkLimits = calcNetworkPerformanceLimits(generalInformation, networkThroughputBytes + storageNetworkThroughputBytes)
+  var auroraEstimatedSharedMemoryBytesMax = calculateMax(cwData.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
+  var auroraEstimatedSharedMemoryBytesAvg = calculateAverage(cwData.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
+  var auroraEstimatedSharedMemoryBytes2sd = calc2SDValue(cwData.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
+  
+  // Calculating actual network traffic which consists from the following components:
+  //   1. CW.StorageNetworkThroughput // The write traffic going to the Aurora Storage, because of 6 copies of each block, this is 6x bigger than CW.WriteThroughput
+  //   If instance is writer then 2a, if reader then 2b
+  //   2a. CW.WriteThroughput * <number of read replicas and global clusters> // CW.WriteThroughput is the amount of data actually written to Aurora storage. 
+                                                                             // For Aurora it is estimated size of WAL stream instance generates. Because the WAL stream also
+                                                                             // sent to all read replicas and to each remote master in a global cluster we do this calculation.
+  //   2b. CW.WriteThroughput          // CW.WriteThroughput of the writer instance
+  //   3. CW.NetworkThroughput        // The amount of network throughput both received from and transmitted to clients
+  
+
+  var numberRemoteClusters = 0
+  try {
+      let command = new DescribeGlobalClustersCommand({});
+      let response = await rds.send(command);
+      if (response.GlobalClusters.length > 0) {
+        let globalCluster = response.GlobalClusters.find((i) => i.GlobalClusterMembers.find((j) => j.DBClusterArn === generalInformation.DBClusterArn))
+        numberRemoteClusters = globalCluster.GlobalClusterMembers.length - 1
+      }
+      //console.log(response)
+  } catch (err) {
+      console.error(err)
+  }
+  
+  
+  if (generalInformation.IsWriter) {
+    var writeThroughput = cwData.MetricDataResults.find(v => v.Id === 'writeThroughput').Values
+    var writeThroughputAvg = calculateAverage(writeThroughput)
+    var walThread = calculateArrayMultiply(writeThroughput, generalInformation.NumberOfOtherInstances + numberRemoteClusters)
+    var walThreadAvg = writeThroughputAvg * (generalInformation.NumberOfOtherInstances + numberRemoteClusters)
+  } else {
+    var writeThroughput = await getWriteThroughput(generalInformation.WriterInstanceIdentifier)  
+    var walThread = writeThroughput
+    var walThreadAvg = calculateAverage(writeThroughput)
+  }
+  
+  
+  // Adding each member of walThread, networkThroughput and storageNetworkThroughput togather to one array to calculate max throughput
+  var estimatedNetworkThroughput = calculateSumArrays(walThread, cwData.MetricDataResults.find(v => v.Id === 'networkThroughput').Values)
+  estimatedNetworkThroughput = calculateSumArrays(estimatedNetworkThroughput, cwData.MetricDataResults.find(v => v.Id === 'storageNetworkThroughput').Values)
+  
+  var networkThroughputAvg = calculateAverage(cwData.MetricDataResults.find(v => v.Id === 'networkThroughput').Values)
+  var storageNetworkThroughputAvg = calculateAverage(cwData.MetricDataResults.find(v => v.Id === 'storageNetworkThroughput').Values)
+  
+  var estimatedNetworkThroughput2sd = calc2SDValue(estimatedNetworkThroughput)
+  var estimatedNetworkThroughputMax = calculateMax(estimatedNetworkThroughput)
+  var estimatedNetworkThroughputAvg = storageNetworkThroughputAvg + walThreadAvg + networkThroughputAvg
+  
+  var networkLimits = calcNetworkPerformanceLimits(generalInformation, estimatedNetworkThroughputMax)
+  
   var transactionLogsDiskUsage = parseFloat(cwData.MetricDataResults.find(v => v.Id === 'transactionLogsDiskUsage').Label.replace(/,/g, ''))
   var snapshotStorageUsed = cwData.MetricDataResults.find(v => v.Id === 'snapshotStorageUsed').Values.length === 0 ? 0 : parseFloat(cwData.MetricDataResults.find(v => v.Id === 'snapshotStorageUsed').Label.replace(/,/g, ''))
   
@@ -1936,11 +2162,23 @@ const counterMetrics = async function (generalInformation) {
   var p = await getAllDBParameters(generalInformation)
   var max_connections = evaluateParameter(generalInformation.EC2Details.MemorySizeInMiB, p.find(par => par.ParameterName === 'max_connections').ParameterValue)
   
+  var localStorageThroughput2sdMB = (get2SDValue(OS_MetricList, 'os.diskIO.rdstemp.writeKbPS') + get2SDValue(OS_MetricList, 'os.diskIO.rdstemp.readKbPS')) / 1024
+  var localStorageThroughputMaxMB = (OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.writeKbPS').max + OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.readKbPS').max) / 1024
+  var localStorageThroughputAvgMB = (OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.writeKbPS').avg + OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.readKbPS').avg) / 1024
+  
   var AdditionalMetrics = {
     bufferCacheHitRatio: {value: parseFloat(cwData.MetricDataResults.find(v => v.Id === 'bufferCacheHitRatio').Label.replace(/,/g, '')),
                            unit: 'Percent',
                            label: 'Buffer cache hit ratio', 
                            desc: `Buffer cache hit ratio`},
+    AuroraEstimatedSharedMemoryUsedAvgMB: {value: (auroraEstimatedSharedMemoryBytesAvg / 1024 / 1024).toFixed(2),
+                           unit: 'MB',
+                           label: 'Average estimated buffer pool memory used', 
+                           desc: `The average value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.`},
+    AuroraEstimatedSharedMemoryUsedMaxMB: {value: (auroraEstimatedSharedMemoryBytesMax / 1024 / 1024).toFixed(2),
+                           unit: 'MB',
+                           label: 'Max estimated buffer pool memory used', 
+                           desc: `The maximum value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.`},
     BlocksReadToLogicalReads: {value: (DB_Aurora_Metrics.IO.metrics.find(m => m.metric === 'db.IO.blks_read').sum / DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.logical_reads').sum * 100).toFixed(2),
                                unit: 'Percent',
                                label: 'Pct disk reads', 
@@ -1949,16 +2187,41 @@ const counterMetrics = async function (generalInformation) {
                            unit: 'Ratio',
                            label: 'Tuples returned to fetched', 
                            desc: 'The number of tuples returned divided by the number of tuples fetched. High values can indicate intensive full and range scans or a high count of dead tuples'},
-    realTrafficPercentage: {value: networkLimits.trafficToMaxPct.toFixed(5),
+    estimatedNetworkTrafficMax: {value: (estimatedNetworkThroughputMax/1024/1024).toFixed(2),
+                            unit: 'MB/s',
+                           label: 'Estimated network throughput max', 
+                           desc: `The estimated maximum network throughput of the instance for the snapshot period. It includes user traffic, WAL stream to other instances or from master instance and Aurora storage throughput.`},
+    estimatedNetworkTrafficAvg: {value: (estimatedNetworkThroughputAvg/1024/1024).toFixed(2),
+                            unit: 'MB/s',
+                           label: 'Estimated network throughput average', 
+                           desc: `The estimated average network throughput of the instance for the snapshot period. It includes user traffic, WAL stream to other instances or from master instance and Aurora storage throughput.`},                           
+    actualTrafficPercentage: {value: networkLimits.trafficToMaxPct.toFixed(2),
                             unit: 'Percent',
                            label: 'Pct network traffic to max limit', 
-                           desc: `The percentage of actual network traffic compared to the maximum possible network throughput. Actual netwrok traffic for the snapshot period was ${((networkThroughputBytes + storageNetworkThroughputBytes) / 1024 / 1024).toFixed(2)} MB/s and the maximum network throughput for this instance class is ${networkLimits.networkMaxMBps} MB/s. ${networkLimits.burstable ? 'Consider that this instace class has a burstable network throughput.' : ''}`},
-    realTrafficToBaselinePct: networkLimits.burstable && networkLimits.trafficToBaselinePct ? {
-                                    value: networkLimits.trafficToBaselinePct.toFixed(5),
+                           desc: `The percentage of actual estimated max network traffic compared to the maximum available network throughput of the instance. Estimated netwrok traffic for the snapshot period was ${(estimatedNetworkThroughputMax / 1024 / 1024).toFixed(2)} MB/s and the maximum network throughput for this instance class is ${networkLimits.networkMaxMBps} MB/s. ${networkLimits.burstable ? 'Consider that this instace class has a burstable network throughput.' : ''}`},
+    actualTrafficToBaselinePct: networkLimits.burstable && networkLimits.trafficToBaselinePct ? {
+                                    value: networkLimits.trafficToBaselinePct.toFixed(2),
                                     unit: 'Percent',
                                     label: 'Pct network traffic to estimated baseline', 
-                                    desc: `The percentage of actual network traffic compared to the baseline network throughput. The estimated baseline network throughput for this instance class is ${networkLimits.baselineMBps} MB/s. Consider that this baseline is only estimation and can differ from actual values.}`
+                                    desc: `The percentage of actual estimated max network traffic compared to the baseline network throughput. The estimated baseline network throughput for this instance class is ${networkLimits.baselineMBps} MB/s. Consider that this baseline is only estimation and can differ from actual values.}`
                               } : undefined,
+    LocalStorageThroughputMax: {value: localStorageThroughputMaxMB.toFixed(2),
+                            unit: 'MB/s',
+                           label: 'Max local storage throughput', 
+                           desc: `The maximum local storage throughput observed during snapshot period. For instances without optimized reads, it is EBS storage.`},
+    LocalStorageThroughputAvg: {value: localStorageThroughputAvgMB.toFixed(2),
+                            unit: 'MB/s',
+                           label: 'Avg local storage throughput', 
+                           desc: `The average local storage throughput observed during snapshot period. For instances without optimized reads, it is EBS storage.`},
+    throughputToLocalStorageMaxToMaxEBSThroughput: {value: (localStorageThroughputMaxMB * 100 / (generalInformation.EC2Details.EBSMaximumBandwidthInMbps/8)).toFixed(2),
+                            unit: 'Percent',
+                           label: 'Pct max local storage througput to max EBS throughput', 
+                           desc: `The percent of maximum available EBS throughput, which is ${(generalInformation.EC2Details.EBSMaximumBandwidthInMbps/8).toFixed(2)} MBps, utilized by actual maximum throughput during snapshot period.`},
+    throughputToLocalStorageMaxToBaselineEBSThroughput: generalInformation.EC2Details.EBSBurstable === "yes" ? {value: (localStorageThroughputMaxMB * 100 / (generalInformation.EC2Details.EBSBaselineBandwidthInMbps/8)).toFixed(2),
+                            unit: 'Percent',
+                           label: 'Pct max local storage througput to baseline EBS throughput', 
+                           desc: `The percent of baseline EBS throughput, which is ${(generalInformation.EC2Details.EBSBaselineBandwidthInMbps/8).toFixed(2)} MBps, utilized by actual maximum throughput during snapshot period.`
+                             } : undefined,
     AAStoBackends: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Label.replace(/,/g, '')) / DB_Aurora_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg * 100).toFixed(2),
                            unit: 'Percent',
                            label: 'Pct active sessions to connections', 
@@ -2019,13 +2282,25 @@ const counterMetrics = async function (generalInformation) {
         var ec2Instances = await ec2.describeInstanceTypes({InstanceTypes: availableInstanceClasses.map(i => i.substr(3))});
       } catch (err) { reject(err) }
     
-      //          0                 1               2        3            4                  5                    6                     7                 8
-      //  [Instance class, Current generation?, Memory GB, vCPUs, netowrk max MB/ps, burstable netowrk?, baseline network MB/ps, local storage GB, max_connections]
+      //          0                 1               2        3            4                  5                    6                     7                 8                9
+      //  [Instance class, Current generation?, Memory GB, vCPUs, netowrk max MB/s, burstable netowrk?, baseline network MB/s, local storage GB, max_connections, EBS throughput MB/s]
       var availableInstanceDetails = ec2Instances.InstanceTypes.map(i => {
-        var network = calcNetworkPerformanceLimits({DBInstanceClass: 'db.'+i.InstanceType, EC2Details: {NetworkPerformance: i.NetworkInfo.NetworkPerformance}})
-        var max_connections = Math.round(evaluateParameter(i.MemoryInfo.SizeInMiB, 'LEAST({DBInstanceClassMemory/9531392},5000)'))
-        return [i.InstanceType, i.CurrentGeneration, i.MemoryInfo.SizeInMiB/1024, i.VCpuInfo.DefaultVCpus, network.networkMaxMBps, network.burstable, network.baselineMBps || 0, i.MemoryInfo.SizeInMiB/1024 * 2, max_connections]
+        let NetworkMaxBandwidthMbps = i.NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.PeakBandwidthInGbps}, 0) * 1000;
+        let NetworkBaselineBandwidthMbps = i.NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.BaselineBandwidthInGbps}, 0) * 1000;
+        var network = calcNetworkPerformanceLimits({DBInstanceClass: 'db.'+i.InstanceType, EC2Details: { NetworkPerformanceMbps: NetworkMaxBandwidthMbps,
+                                                                                                         NetworkBaselineMbps: NetworkBaselineBandwidthMbps,
+                                                                                                         BurstableNetworkPerformance: (NetworkMaxBandwidthMbps > NetworkBaselineBandwidthMbps) ? "yes" : "no" } 
+              })
+        let max_connections = Math.round(evaluateParameter(i.MemoryInfo.SizeInMiB, 'LEAST({DBInstanceClassMemory/9531392},5000)'))
+        let EBSMaximumBandwidthInMbps = i.EbsInfo.EbsOptimizedInfo.MaximumBandwidthInMbps
+        let EBSBaselineBandwidthInMbps = i.EbsInfo.EbsOptimizedInfo.BaselineBandwidthInMbps
+        let EBSThroughputMB = EBSMaximumBandwidthInMbps / 8
+        if (i.EbsInfo.EbsOptimizedInfo.MaximumBandwidthInMbps > i.EbsInfo.EbsOptimizedInfo.BaselineBandwidthInMbps) {
+           EBSThroughputMB = EBSBaselineBandwidthInMbps / 8
+        }
+        return [i.InstanceType, i.CurrentGeneration, i.MemoryInfo.SizeInMiB/1024, i.VCpuInfo.DefaultVCpus, network.networkMaxMBps, network.burstable, network.baselineMBps || 0, i.MemoryInfo.SizeInMiB/1024 * 2, max_connections, EBSThroughputMB]
       } );
+      
       
       // sort the values inside availableInstanceDetails array by the first column
       availableInstanceDetails.sort(function(a, b) {
@@ -2034,48 +2309,85 @@ const counterMetrics = async function (generalInformation) {
       
         
       // CPU, Network, local storage, memory
-      const snapshot_vcpus_used =  GeneralInformation.EC2Details.DefaultVCpus * os_metrics.cpuUtilization.metrics.find(m => m.metric === 'os.cpuUtilization.total').max / 100
-      const snapshot_nt_used = (networkThroughputBytes + storageNetworkThroughputBytes) / 1024 / 1024
-      const snapshot_fsys_used = os_metrics.fileSys.metrics.find(m => m.metric === 'os.fileSys.used').max / 1024 / 1024
-      const snapshot_max_backends = db_metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').max
-      const snapshot_bc_hr = additional_metrics.bufferCacheHitRatio.value
-      const snapshot_mem_swap_value = os_metrics.memory.metrics.find(m => m.metric === 'os.memory.db.swap').max
-      const snapshot_mem_swap = snapshot_mem_swap_value === 5e-324 ? 0 : snapshot_mem_swap_value
-      const snapshot_memory_total = Math.round(static_metrics.memory[static_metrics.memory.length - 1].Value / 1024 / 1024)
+      if (options['use-2sd-values']) {
+        var snapshot_nt_used = estimatedNetworkThroughput2sd / 1024 / 1024
+        var snapshot_aurora_max_bc_mb = auroraEstimatedSharedMemoryBytes2sd / 1024 / 1024
+        var snapshot_local_storage_max_throughput = localStorageThroughput2sdMB
+        var snapshot_memory_estimated_gb = ((50003 + (auroraEstimatedSharedMemoryBytes2sd / 1024 / 8)) * 12038) / 1024 / 1024 / 1024
+        var snapshot_vcpus_used =  parseFloat(( GeneralInformation.EC2Details.DefaultVCpus * get2SDValue(OS_MetricList, 'os.cpuUtilization.total') / 100 ).toFixed(1))
+      } else {
+        var snapshot_nt_used = estimatedNetworkThroughputMax / 1024 / 1024
+        var snapshot_aurora_max_bc_mb = additional_metrics.AuroraEstimatedSharedMemoryUsedMaxMB.value
+        var snapshot_local_storage_max_throughput = localStorageThroughputMaxMB
+        // Using this formula to calculate DBInstanceClassMemory based on this formula shared_buffers = {DBInstanceClassMemory/12038} - 50003
+        // As shared_buffers will use auroraEstimatedSharedMemoryBytesMax
+        var snapshot_memory_estimated_gb = ((50003 + (auroraEstimatedSharedMemoryBytesMax / 1024 / 8)) * 12038) / 1024 / 1024 / 1024
+        var snapshot_vcpus_used =  parseFloat(( GeneralInformation.EC2Details.DefaultVCpus * os_metrics.cpuUtilization.metrics.find(m => m.metric === 'os.cpuUtilization.total').max / 100 ).toFixed(1))
+      }
+      
+  
+      var snapshot_fsys_used = os_metrics.fileSys.metrics.find(m => m.metric === 'os.fileSys.used').max / 1024 / 1024
+      var snapshot_max_backends = db_metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').max
+      var snapshot_bc_hr = additional_metrics.bufferCacheHitRatio.value
+      var snapshot_mem_swap_value = os_metrics.memory.metrics.find(m => m.metric === 'os.memory.db.swap').max
+      var snapshot_mem_swap = snapshot_mem_swap_value === 5e-324 ? 0 : snapshot_mem_swap_value
+      var snapshot_memory_total = Math.round(static_metrics.memory[static_metrics.memory.length - 1].Value / 1024 / 1024)
+      
       
       const snapshot_vcpus_used_plus_reserve = snapshot_vcpus_used * (1 + resourceReservePct/100)
       const snapshot_nt_used_plus_reserve = snapshot_nt_used * (1 + resourceReservePct/100)
       const snapshot_fsys_used_plus_reserve = snapshot_fsys_used * (1 + resourceReservePct/100)
       const snapshot_max_backends_plus_reserve = snapshot_max_backends * (1 + resourceReservePct/100)
+      const snapshot_local_storage_max_throughput_plus_reserve = snapshot_local_storage_max_throughput * (1 + resourceReservePct/100)
+      const snapshot_memory_estimated_gb_plus_reserve = snapshot_memory_estimated_gb * (1 + resourceReservePct/100)
     
-      res['added_resource_reserve_pct'] = resourceReservePct
+      res['resource_reserve_pct'] = resourceReservePct
+      res['usage_stats_based_on'] = options['use-2sd-values'] ? 'avg+2sd' : 'max'
       res['snapshot_period_stats'] = {
-        snapshot_vcpus_used_plus_reserve,
-        snapshot_nt_used_plus_reserve,
-        snapshot_fsys_used_plus_reserve,
-        snapshot_max_backends_plus_reserve,
-        snapshot_bc_hr,
-        snapshot_mem_swap,
-        snapshot_memory_total
+        snapshot_vcpus_used,
+        snapshot_nt_used,
+        snapshot_fsys_used,
+        snapshot_max_backends,
+        snapshot_memory_estimated_gb,
+        snapshot_local_storage_max_throughput
       }
+      res['instance_capacity'] = {
+        vcpus: GeneralInformation.EC2Details.DefaultVCpus,
+        network_limit_MBps: GeneralInformation.EC2Details.BurstableNetworkPerformance === "yes" ? GeneralInformation.EC2Details.NetworkBaselineMbps / 8 : GeneralInformation.EC2Details.NetworkPerformanceMbps / 8, 
+        local_storage_GB: (staticMetrics.memory.at(-1).Value / 1024 / 1024) * 2,
+        max_connections,
+        memory_GB: staticMetrics.memory.at(-1).Value / 1024 / 1024,
+        local_storage_throughput_limit_MBps: GeneralInformation.EC2Details.EBSBurstable === "yes" ? GeneralInformation.EC2Details.EBSBaselineBandwidthInMbps / 8 : GeneralInformation.EC2Details.EBSMaximumBandwidthInMbps / 8,
+      }
+      //console.log('snapshot_vcpus_used_plus_reserve', snapshot_vcpus_used_plus_reserve)
+      //console.log('snapshot_nt_used_plus_reserve', snapshot_nt_used_plus_reserve)
+      //console.log('snapshot_fsys_used_plus_reserve', snapshot_fsys_used_plus_reserve)
+      //console.log('snapshot_max_backends_plus_reserve', snapshot_max_backends_plus_reserve)
+      //console.log('snapshot_local_storage_max_throughput_plus_reserve', snapshot_local_storage_max_throughput_plus_reserve)
+      //console.log('snapshot_memory_estimated_gb_plus_reserve', snapshot_memory_estimated_gb_plus_reserve)
       
       const currPrice = await getPrices(GeneralInformation)
       
       var availableInstanceScores = availableInstanceDetails.map(i => {
-        if (snapshot_bc_hr < 95 || snapshot_mem_swap > 0) {
+        //console.log('i', i, snapshot_memory_total, snapshot_bc_hr, snapshot_mem_swap)
+        if (snapshot_bc_hr < 95 || snapshot_mem_swap > (snapshot_memory_total * 1024 * 1024 * 1024) * 0.05) {
           if (snapshot_memory_total > i[2]) return
         }
+        if (snapshot_memory_estimated_gb_plus_reserve > i[2]) return
         if (i[1] === false) return
+        if (snapshot_local_storage_max_throughput_plus_reserve > i[9]) return
         if (snapshot_vcpus_used_plus_reserve > i[3]) return
         if (snapshot_fsys_used_plus_reserve > i[7]) return
         if (snapshot_max_backends_plus_reserve > i[8]) return
         if ((snapshot_nt_used_plus_reserve > i[6] && i[5] === true) || (snapshot_nt_used_plus_reserve > i[4] && i[5] !== true)) return
-        var x1 = i[3] - snapshot_vcpus_used_plus_reserve
-        var x2 = (i[5] === false) ? i[4] - snapshot_nt_used_plus_reserve : i[6] - snapshot_nt_used_plus_reserve
-        var x3 = i[7] - snapshot_fsys_used_plus_reserve
-        var x4 = i[8] - snapshot_max_backends_plus_reserve
-        var score = 1 / (x1 + x2 + x3 + x4)
-        i.push(score)
+        let x1 = i[3] - snapshot_vcpus_used_plus_reserve
+        let x2 = (i[5] === false) ? i[4] - snapshot_nt_used_plus_reserve : i[6] - snapshot_nt_used_plus_reserve
+        let x3 = i[7] - snapshot_fsys_used_plus_reserve
+        let x4 = i[8] - snapshot_max_backends_plus_reserve
+        let x5 = i[9] - snapshot_local_storage_max_throughput_plus_reserve
+        let score = 1 / (x1 + x2 + x3 + x4 + x5)
+        i.push(parseFloat((score * 1000).toFixed(5)))
+        //console.log('Eligible')
         return i
       })
       
@@ -2094,9 +2406,13 @@ const counterMetrics = async function (generalInformation) {
       }
       
       
-      // Sort the values inside availableInstanceScores array by the last number column
+      // Sort the values inside availableInstanceScores array by the score desc and price diff asc
       availableInstanceScores.sort(function(a, b) {
-        return b[9]- a[9];
+          if(b[10] === a[10]) {
+              return a[11] - b[11]; 
+          } else {
+              return b[10] - a[10];
+          }
       })
       
       
@@ -2110,15 +2426,26 @@ const counterMetrics = async function (generalInformation) {
       // Get top 3 candidates
       availableInstanceScores = availableInstanceScores.slice(0, 3)
       
+      //console.log('availableInstanceScores', availableInstanceScores)
       
-      // Check if one of the elements of availableInstanceScores includes current instance class GeneralInformation.DBInstanceClass
-      var currentInstanceClass = availableInstanceScores.find(i => i[0] === GeneralInformation.DBInstanceClass)
-      if (currentInstanceClass) {
+      // Check if the first entry of the availableInstanceScores is current instance class GeneralInformation.DBInstanceClass
+      if (GeneralInformation.DBInstanceClass === availableInstanceScores[0][0]) {
         res['recommended_instances_found'] = false
         res['note'] = 'The current instance class is appropriate for the current workload requirements.'
       } else {
         res['recommended_instances_found'] = true
-        res['recommended_instances_desc'] = ['Instance class', 'Current generation', 'Memory GB', 'vCPUs', 'Network Mbps', 'Burstable network', 'Baseline netowrk Mbps', 'Local storage GB', 'Max recommended connections', 'Score', 'Cost diff Pct']
+        res['recommended_instances_desc'] = ['Instance class', 
+                                             'Current generation', 
+                                             'Memory GB', 
+                                             'vCPUs', 
+                                             'Network MBps', 
+                                             'Burstable network', 
+                                             'Baseline netowrk MBps', 
+                                             'Local storage GB', 
+                                             'Max recommended connections',
+                                             'EBS throughput MBps',
+                                             'Score', 
+                                             'Cost diff Pct']
         res['recommended_instances'] = availableInstanceScores
         res['note'] = 'You can consider one of the listed instance types to better suit current workload.'
       }
@@ -2149,7 +2476,7 @@ const counterMetrics = async function (generalInformation) {
   
   var returnObject = {}
   
-  returnObject['InstanceRocemmendations'] = suggestInstance || undefined
+  returnObject['WorkloadAnalyses'] = suggestInstance || undefined
   returnObject['StaticMetrics'] = staticMetrics
   returnObject['AdditionalMetrics'] = AdditionalMetrics
   returnObject['Correlations'] = correlations
@@ -2167,6 +2494,15 @@ const counterMetrics = async function (generalInformation) {
 const getGeneralInformation = async function (params) {
   return new Promise(async (resolve, reject) => {
 
+  // Getting the current region from instance metadata and setting APIs for the services using this region
+  if (! myRegion) myRegion = await getCurrentRegion()
+  // console.log('AWS Region', myRegion)
+  rds = new RDS({apiVersion: '2014-10-31', region: myRegion});
+  ec2 = new EC2({apiVersion: '2016-11-15', region: myRegion});
+  pi  = new  PI({apiVersion: '2018-02-27', region: myRegion});
+  cw = new CloudWatchClient({apiVersion: '2010-08-01', region: myRegion});
+
+
 rds.describeDBInstances(params, async function(err, data) {
   if (err) { // an error occurred
     
@@ -2177,7 +2513,7 @@ rds.describeDBInstances(params, async function(err, data) {
   } else {
   
     var DBInstanceDetails = data.DBInstances[0];
-    //console.log(JSON.stringify(DBInstanceDetails, null, 2))
+    // console.log(JSON.stringify(DBInstanceDetails, null, 2))
     var { DBInstanceIdentifier,
           DBInstanceArn,
           DBInstanceClass,
@@ -2224,11 +2560,32 @@ rds.describeDBInstances(params, async function(err, data) {
         } = EC2InstanceDetails;
     }
 
+    try {
+      let command = new DescribeDBClustersCommand({DBClusterIdentifier: DBClusterIdentifier});
+      let response = await rds.send(command);
+      let myInstance = response.DBClusters[0].DBClusterMembers.find(i => i.DBInstanceIdentifier === DBInstanceIdentifier)
+      var IsWriter = myInstance.IsClusterWriter
+      if (IsWriter === true) {
+         var WriterInstanceIdentifier = DBInstanceIdentifier
+      } else {
+         var WriterInstanceIdentifier = response.DBClusters[0].DBClusterMembers.find(i => i.IsClusterWriter === true).DBInstanceIdentifier
+      }
+
+      var NumberOfOtherInstances = response.DBClusters[0].DBClusterMembers.length - 1
+      var DBClusterArn = response.DBClusters[0].DBClusterArn
+      //console.log(response.DBClusters[0])
+    } catch (err) {
+      console.error(err)
+    }
+
     let NetworkMaxBandwidthMbps = NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.PeakBandwidthInGbps}, 0) * 1000;
     let NetworkBaselineBandwidthMbps = NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.BaselineBandwidthInGbps}, 0) * 1000;
     
     var GeneralInformation = {
           DBInstanceIdentifier,
+          IsWriter,
+          WriterInstanceIdentifier,
+          NumberOfOtherInstances,
           DBInstanceArn,
           DBInstanceClass,
           minACUs,
@@ -2247,6 +2604,7 @@ rds.describeDBInstances(params, async function(err, data) {
           AutoMinorVersionUpgrade,
           StorageType,
           DBClusterIdentifier,
+          DBClusterArn,
           PerformanceInsightsEnabled,
           PerformanceInsightsRetentionPeriod,
           EnabledCloudwatchLogsExports,
@@ -2269,8 +2627,7 @@ rds.describeDBInstances(params, async function(err, data) {
               EBSBaselineIops: EbsInfo.EbsOptimizedInfo.BaselineIops
             }
           };
-      
-      
+    
       resolve(GeneralInformation);
       
      }
@@ -2428,6 +2785,11 @@ const getWaitsAndSQLs = async function (GeneralInformation) {
       ]
     });
     
+    if (PITOPWaitEventsRaw.MetricList[0].DataPoints.length === 0 || PITOPWaitEventsRaw.MetricList[0].DataPoints.reduce((sum, obj) => {return sum + obj.Value;}, 0) === 0) {
+       console.log('No data return from Performance Insights for this timeframe. Connot continue.')
+       process.exit(1)
+    }
+    
     returnWaitsObject['AlignedStartTime'] = PITOPWaitEventsRaw.AlignedStartTime;
     returnWaitsObject['AlignedEndTime'] = PITOPWaitEventsRaw.AlignedEndTime;
     var WallClockTimeSec = (PITOPWaitEventsRaw.AlignedEndTime-PITOPWaitEventsRaw.AlignedStartTime) / 1000;
@@ -2556,7 +2918,7 @@ try {
          reject(error);
     }
   
-  console.log('Output', 'sqlids', sqlids);
+  //console.log('Output', 'sqlids', sqlids);
 
   var sqlTextFullPromises = sqlids.Keys.map(async Key => {
     var SQLTextsFullRaw = await pi.getDimensionKeyDetails({
@@ -2771,7 +3133,7 @@ const getDBLogFiles = async function (GeneralInformation) {
             const lines = logfile.LogFileData.split("\n");
         
             const filteredLines = lines.filter((line) => {
-              console.log('logfile line', line)
+              //console.log('logfile line', line)
               const timestamp = line.split("UTC::")[0].trim();
               const lineTimestamp = new Date(timestamp).getTime();
               const containsKWords = /CRITICAL|ERROR/i.test(line);
@@ -2990,6 +3352,7 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName})
        
        var pi_snapshot = {
            $META$: {
+              region: myRegion,
               startTime: results[0].waits.AlignedStartTime,
               endTime: results[0].waits.AlignedEndTime,
               instanceName: InstanceName,

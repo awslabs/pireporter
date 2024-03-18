@@ -53,10 +53,14 @@ node pireporter.js --help
 
 ```sh
 cd portable
-./pireporter-linux --help
+./pireporter --help
 ```
 
 > Note: For security reasons you can also clone the repository and install `pkg` on a staging machine and build a packaged version yourself and then use it in your environment.
+
+##### AWS Region
+
+The AWS Region will be automatically set to the region of the hosting EC2 instance, based on instance metadata retrieved through IMDSv2. You can overwrite this by setting the AWS_REGION environment variable to the desired value.
 
 ##### Security considerations
 
@@ -83,7 +87,7 @@ For RDS PostgreSQL and Amazon Aurora with PostgreSQL compatibility, consider the
 
 If the snapshot start time and end time differs from the time you provided on command line, then make sure that the timezon of the host and the Aurora or RDS instance are same.
 
-Chech timezone on the host where you execute `pireporter`:
+Check timezone on the host where you execute `pireporter`:
 ```
 $ timedatectl | grep "Time zone"
        Time zone: Europe/Berlin (CET, +0100)
@@ -121,7 +125,11 @@ In both cases we have `Europe/Berlin` timezone. If you have differnt values, the
   --res-reserve-pct number       Specify the percentage of additional resources 
                                  to reserve above the maximum metrics when      
                                  generating instance type recommendations.      
-                                 Default is 30.                                 
+                                 Default is 15.
+  --use-2sd-values               To calculate the required resource for the     
+                                 workload, consider the average value plus 2    
+                                 standard deviations (SDs). By default the      
+                                 maximum usage is used.
   -m, --comment string           Provide a comment to associate with the        
                                  snapshot.                                      
   -r, --create-report            Create HTML report for snapshot.               

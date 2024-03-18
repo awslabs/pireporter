@@ -39,7 +39,8 @@
             "Sid": "pireporter3",
             "Effect": "Allow",
             "Action": [
-                "rds:DescribeDBClusters"
+                "rds:DescribeDBClusters",
+                "rds:DescribeGlobalClusters"
             ],
             "Resource": "*",
             "Condition": {
