@@ -364,16 +364,22 @@ const generateHTMLReport = async function(snapshotObject) {
         
         var recommendedInstancesHTML = ''
         var snapshotPeriodStatsHTML = `<table style="width:initial" class="no-shadow">
-          ${tr(td('Number vCPUs used')+td(snap.snapshot_period_stats.snapshot_vcpus_used_plus_reserve))}
-          ${tr(td('Network throughput (Mbps)')+td(snap.snapshot_period_stats.snapshot_nt_used_plus_reserve.toFixed(2)))}
-          ${tr(td('Local storage used (GB)')+td(snap.snapshot_period_stats.snapshot_fsys_used_plus_reserve.toFixed(2)))}
-          ${tr(td('Number backends')+td(snap.snapshot_period_stats.snapshot_max_backends_plus_reserve.toFixed(1)))}
+          <tr><th>Stat</th><th>Usage</th><th>Capacity</th><th>Pct used</th></tr>
+          ${tr(td('Number vCPUs')+td(snap.snapshot_period_stats.snapshot_vcpus_used)+td(snap.instance_capacity.vcpus)+td((snap.snapshot_period_stats.snapshot_vcpus_used*100/snap.instance_capacity.vcpus).toFixed(2)+'%'))}
+          ${tr(td('Network throughput (MBps)')+td(snap.snapshot_period_stats.snapshot_nt_used.toFixed(2))+td(snap.instance_capacity.network_limit_MBps)+td((snap.snapshot_period_stats.snapshot_nt_used*100/snap.instance_capacity.network_limit_MBps).toFixed(2)+'%'))}
+          ${tr(td('Host instance memory (GB)')+td(snap.snapshot_period_stats.snapshot_memory_estimated_gb.toFixed(2))+td(snap.instance_capacity.memory_GB.toFixed(2))+td((snap.snapshot_period_stats.snapshot_memory_estimated_gb*100/snap.instance_capacity.memory_GB).toFixed(2)+'%'))}
+          ${tr(td('Local storage throughput (MBps)')+td(snap.snapshot_period_stats.snapshot_local_storage_max_throughput.toFixed(2))+td(snap.instance_capacity.local_storage_throughput_limit_MBps.toFixed(2))+td((snap.snapshot_period_stats.snapshot_local_storage_max_throughput*100/snap.instance_capacity.local_storage_throughput_limit_MBps).toFixed(2)+'%'))}
+          ${tr(td('Local storage (GB)')+td(snap.snapshot_period_stats.snapshot_fsys_used.toFixed(2))+td(snap.instance_capacity.local_storage_GB.toFixed(2))+td((snap.snapshot_period_stats.snapshot_fsys_used*100/snap.instance_capacity.local_storage_GB).toFixed(2)+'%'))}
+          ${tr(td('Number backends')+td(snap.snapshot_period_stats.snapshot_max_backends.toFixed(1))+td(snap.instance_capacity.max_connections.toFixed(1))+td((snap.snapshot_period_stats.snapshot_max_backends*100/snap.instance_capacity.max_connections).toFixed(2)+'%'))}
         </table>`
         
         if (snap.recommended_instances.length === 0) {
-          message = `Based on the maximum usage metrics and an additional ${snap.added_resource_reserve_pct}% reserve above them: ${sanp.note}`
+          message = `Based on the ${snap.usage_stats_based_on === 'max' ? 'maximum' : 'average + 2 standard deviations'} usage metrics during this snapshot and an additional ${snap.resource_reserve_pct}% reserve above them: ${snap.note}`
         } else {
-          message = `Based on the maximum usage metrics and an additional ${snap.added_resource_reserve_pct}% reserve above them, there are instance recommendations available that may be better suited for the workload.`
+          message = `Based on the ${snap.usage_stats_based_on === 'max' ? 'maximum' : 'average + 2 standard deviations'} usage metrics during this snapshot and an additional ${snap.resource_reserve_pct}% reserve above them, there are possible instance classes that may be better suited for the workload.`
+          
+          // 'https://us-east-1.console.aws.amazon.com/compute-optimizer/home?region=eu-central-1#/resources-lists/rds'
+          
           
           var rowHTML = ''
           for (var i = 0; i < snap.recommended_instances_desc.length; i++) {
@@ -402,18 +408,20 @@ const generateHTMLReport = async function(snapshotObject) {
         }
         
         body = `
-          <div style="padding: 10px"><span>Max resources used in snapshot period including additional reserve:</span></div>
+          <div style="padding: 10px"><span>${snap.usage_stats_based_on === 'max' ? 'Maximum' : 'Average + 2 standard deviations'} resources used in snapshot period:</span></div>
           ${snapshotPeriodStatsHTML}
           ${recommendedInstancesHTML}
         `
         
       } else {
-        message = `Based on the maximum usage metrics and an additional ${snap.added_resource_reserve_pct}% reserve above them, the current instance class is appropriate for the current workload requirements.`
+        message = `Based on the maximum usage metrics and an additional ${snap.resource_reserve_pct}% reserve above them, the current instance class is appropriate for the current workload requirements.`
       }
       
       return `
        <table style="width:initial" class="container-table">
-        	   <caption>Instance recommendations</caption>
+        	   <caption>Workload analyses
+        	   ${infoMessage(`CAUTION: The information in this section is based solely on the data available in this report and only for this snapshot period. The information was created on a best effort basis and requires additional manual confirmation. It is included to make you aware that the resource could be a potential bottleneck for the workload. To get more reliable recommendations, use <a href="https://us-east-1.console.aws.amazon.com/compute-optimizer/home?region=${snapshotObject.$META$.region}#/resources-lists/rds">AWS Compute Optimizer</a>`)}
+        	   </caption>
         	   <td>
         	      <div style="padding: 10px"><span>${message}</span></div>
         	      ${body}
@@ -501,7 +509,7 @@ const generateHTMLReport = async function(snapshotObject) {
    	   <caption>Metrics</caption>
    	   ${tr(td(staticMetricsHTML))}
    	   ${tr(td(generateAdditionalMetricsHTML(snapshotObject.Metrics.AdditionalMetrics)))}
-   	   ${tr(td(generateInstanceRecommendationsHTML(snapshotObject.Metrics.InstanceRocemmendations)))}
+   	   ${tr(td(generateInstanceRecommendationsHTML(snapshotObject.Metrics.WorkloadAnalyses)))}
    	   ${tr(td(generateMetricsHTML(snapshotObject.Metrics.OSMetrics, 'OS')))}
    	   ${tr(td(generateMetricsHTML(snapshotObject.Metrics.DBAuroraMetrics, 'DB')))}
    	   ${tr(td(correlationsHTML))}
@@ -794,7 +802,10 @@ const generateHTMLReport = async function(snapshotObject) {
 <style>${htmlStyle}</style>
 <script>${htmlScript}</script>
 
-<div class="info-box" style="float:right"><b>Report creation time: </b>${getCurrDate()}</div>
+<div class="info-box" style="float:right">
+  <b>Report creation time: </b>${getCurrDate()}<br>
+  <b>Region: </b>${snapshotObject.$META$.region}
+</div>
 
 <table style="width:initial">
    	   <caption>Snapshot</caption>
@@ -1298,17 +1309,20 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
         
         var recommendedInstancesHTML = ''
         var snapshotPeriodStatsHTML = `<table style="width:initial" class="no-shadow">
-          ${tr(td('Number vCPUs used')+td(snap.snapshot_period_stats.snapshot_vcpus_used_plus_reserve))}
-          ${tr(td('Network throughput (Mbps)')+td(snap.snapshot_period_stats.snapshot_nt_used_plus_reserve.toFixed(2)))}
-          ${tr(td('Local storage used (GB)')+td(snap.snapshot_period_stats.snapshot_fsys_used_plus_reserve.toFixed(2)))}
-          ${tr(td('Number backends')+td(snap.snapshot_period_stats.snapshot_max_backends_plus_reserve.toFixed(1)))}
+          <tr><th>Stat</th><th>Usage</th><th>Capacity</th><th>Pct used</th></tr>
+          ${tr(td('Number vCPUs')+td(snap.snapshot_period_stats.snapshot_vcpus_used)+td(snap.instance_capacity.vcpus)+td((snap.snapshot_period_stats.snapshot_vcpus_used*100/snap.instance_capacity.vcpus).toFixed(2)+'%'))}
+          ${tr(td('Network throughput (MBps)')+td(snap.snapshot_period_stats.snapshot_nt_used.toFixed(2))+td(snap.instance_capacity.network_limit_MBps)+td((snap.snapshot_period_stats.snapshot_nt_used*100/snap.instance_capacity.network_limit_MBps).toFixed(2)+'%'))}
+          ${tr(td('Host instance memory (GB)')+td(snap.snapshot_period_stats.snapshot_memory_estimated_gb.toFixed(2))+td(snap.instance_capacity.memory_GB.toFixed(2))+td((snap.snapshot_period_stats.snapshot_memory_estimated_gb*100/snap.instance_capacity.memory_GB).toFixed(2)+'%'))}
+          ${tr(td('Local storage throughput (MBps)')+td(snap.snapshot_period_stats.snapshot_local_storage_max_throughput.toFixed(2))+td(snap.instance_capacity.local_storage_throughput_limit_MBps.toFixed(2))+td((snap.snapshot_period_stats.snapshot_local_storage_max_throughput*100/snap.instance_capacity.local_storage_throughput_limit_MBps).toFixed(2)+'%'))}
+          ${tr(td('Local storage (GB)')+td(snap.snapshot_period_stats.snapshot_fsys_used.toFixed(2))+td(snap.instance_capacity.local_storage_GB.toFixed(2))+td((snap.snapshot_period_stats.snapshot_fsys_used*100/snap.instance_capacity.local_storage_GB).toFixed(2)+'%'))}
+          ${tr(td('Number backends')+td(snap.snapshot_period_stats.snapshot_max_backends.toFixed(1))+td(snap.instance_capacity.max_connections.toFixed(1))+td((snap.snapshot_period_stats.snapshot_max_backends*100/snap.instance_capacity.max_connections).toFixed(2)+'%'))}
         </table>`
         
         if (snap.recommended_instances.length === 0) {
-          message = `Based on the maximum usage metrics and an additional ${snap.added_resource_reserve_pct}% reserve above them: ${sanp.note}`
+          message = `Based on the ${snap.usage_stats_based_on === 'max' ? 'maximum' : 'average + 2 standard deviations'} usage metrics during this snapshot and an additional ${snap.resource_reserve_pct}% reserve above them: ${snap.note}`
         } else {
-          message = `Based on the maximum usage metrics and an additional ${snap.added_resource_reserve_pct}% reserve above them, there are instance recommendations available that may be better suited for the workload.`
-          
+          message = `Based on the ${snap.usage_stats_based_on === 'max' ? 'maximum' : 'average + 2 standard deviations'} usage metrics during this snapshot and an additional ${snap.resource_reserve_pct}% reserve above them, there are possible instance classes that may be better suited for the workload.`
+        
           var rowHTML = ''
           for (var i = 0; i < snap.recommended_instances_desc.length; i++) {
             rowHTML = rowHTML + td(snap.recommended_instances_desc[i])
@@ -1334,21 +1348,24 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
           `
         
         }
-        
+       
         body = `
-          <div style="padding: 10px"><span>Max resources used in snapshot period including additional reserve:</span></div>
+          <div style="padding: 10px"><span>${snap.usage_stats_based_on === 'max' ? 'Maximum' : 'Average + 2 standard deviations'} resources used in snapshot period:</span></div>
           ${snapshotPeriodStatsHTML}
           ${recommendedInstancesHTML}
         `
         
       } else {
-        message = `Based on the maximum usage metrics and an additional ${snap.added_resource_reserve_pct}% reserve above them, the current instance class is appropriate for the current workload requirements.`
+        message = `Based on the maximum usage metrics and an additional ${snap.resource_reserve_pct}% reserve above them, the current instance class is appropriate for the current workload requirements.`
       }
       
       if (snapid === 2) {
         return `
        <table style="width:initial" class="container-table s2-r-bg">
-        	   <caption class="s2-c-color">Instance recommendations for snapshot period 2</caption>
+        	   <caption class="s2-c-color">Workload analyses for snapshot period 2
+        	   ${infoMessage(`CAUTION: The information in this section is based solely on the data available in this report and only for this snapshot period. The information was created on a best effort basis and requires additional manual confirmation. It is included to make you aware that the resource could be a potential bottleneck for the workload. To get more reliable recommendations, use <a href="https://us-east-1.console.aws.amazon.com/compute-optimizer/home?region=${snapshotObject1.$META$.region}#/resources-lists/rds">AWS Compute Optimizer</a>`)}
+        	   
+        	   </caption>
         	   <td>
         	      <div style="padding: 10px"><span>${message}</span></div>
         	      ${body}
@@ -1358,7 +1375,9 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
       } else {
         return `
        <table style="width:initial" class="container-table">
-        	   <caption>Instance recommendations for snapshot period 1</caption>
+        	   <caption>Workload analyses for snapshotObject1shot period 1
+        	   ${infoMessage(`CAUTION: The information in this section is based solely on the data available in this report and only for this snapshot period. The information was created on a best effort basis and requires additional manual confirmation. It is included to make you aware that the resource could be a potential bottleneck for the workload. To get more reliable recommendations, use <a href="https://us-east-1.console.aws.amazon.com/compute-optimizer/home?region=${snapshotObject2.$META$.region}#/resources-lists/rds">AWS Compute Optimizer</a>`)}
+        	   </caption>
         	   <td>
         	      <div style="padding: 10px"><span>${message}</span></div>
         	      ${body}
@@ -1369,9 +1388,10 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     }
 
 
-   var instanceRecommendationsHTML = `<table class="container-table"><tr>
-  <td>${generateInstanceRecommendationsHTML(snapshotObject1.Metrics.InstanceRocemmendations, 1)}</td></tr>
-  <tr><td>${generateInstanceRecommendationsHTML(snapshotObject2.Metrics.InstanceRocemmendations, 2)}</td></tr>
+   var instanceRecommendationsHTML = `<table class="container-table">
+   <tr>
+  <td>${generateInstanceRecommendationsHTML(snapshotObject1.Metrics.WorkloadAnalyses, 1)}</td></tr>
+  <tr><td>${generateInstanceRecommendationsHTML(snapshotObject2.Metrics.WorkloadAnalyses, 2)}</td></tr>
   </table>`
 
 
@@ -1545,7 +1565,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
             rows = `${rows}\n${tr(rowdata)}`
           }
         }
-        // #AG
+        
         if (rows.length > 0) {
           return `<table class='inline-table'><caption>Additional metrics</caption>\n${rows}\n</table>`
         }
