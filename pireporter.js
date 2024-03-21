@@ -2447,7 +2447,7 @@ const counterMetrics = async function (generalInformation) {
                                              'Score', 
                                              'Cost diff Pct']
         res['recommended_instances'] = availableInstanceScores
-        res['note'] = 'You can consider one of the listed instance types to better suit current workload.'
+        res['note'] = 'Instance types to suit current workload.'
       }
       
       resolve(res)
