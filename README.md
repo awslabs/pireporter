@@ -30,6 +30,32 @@ The following data will be gathered into the snapshot files and represented in t
 * Log File Analysis: The tool downloads and analyzes log files from the snapshot period, grouping and displaying error or fatal messages in the report if any are found.
 * Compare Period Report: Enables comparison between two snapshots to quickly identify differences in metrics and SQL performance.
 
+##### Screenshots
+
+General information section:
+
+![Screen 1](https://raw.githubusercontent.com/awslabs/pireporter/master/screen1.png)
+
+Metrics calculated from other metrics and workload analysis section:
+
+![Screen 2](https://raw.githubusercontent.com/awslabs/pireporter/master/screen2.png)
+
+Next are parts of the compare periods report, where yellow represents snapshot 1 data, teal blue snapshot 2 data and green the difference.
+
+Difference between two metrics represtend in three forms, for example `+7.81 [1.1x|13%]` provides three values:
+
+* 7.81 represents the absolute difference or increase in the numerical value of the metric being compared.
+
+* 1.1x represents the factor by which the metric has increased. So 1.1x means the new value is 1.1 times higher the previous value.
+
+* 13% is the percentage increase in the metric's value.
+
+So in this case, the metric increased by an absolute value of 7.81 units, which is a 1.1x or 13% increase over the previous value. The 7.81, 1.1x, and 13% all represent the same increase, just expressed in different ways (absolute, factor, and percentage respectively).
+
+![Screen 3](https://raw.githubusercontent.com/awslabs/pireporter/master/screen3.png)
+
+![Screen 4](https://raw.githubusercontent.com/awslabs/pireporter/master/screen4.png)
+
 
 ##### How to use
 
