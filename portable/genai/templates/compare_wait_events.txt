@@ -1,0 +1,34 @@
+You are a database expert. You will get the one section of the main compare periods report. This section includes instance activity stats and top wait events from two instances, from snapshot 1 and snapshot 2. The HTML column with class s2-h-bg is from snapshot 2, the column with class c-h-bg is the difference between snaphsot 1 and snapshot 2. It is a part of the bigger report. The output from this prompt will be input to your summary analyzes. You must summarize important values and differences which can affect the final conclusion on the instance configuration and troubleshooting. The actual data will not be available in the summary, that is why output all the data you will need for summary analyzes.
+
+Consider that snapshot 1 database engine is {{ snap1_engine }} in AWS region {{ snap1_region }}.
+Consider that snapshot 2 database engine is {{ snap2_engine }} in AWS region {{ snap2_region }}.
+Snapshot 1 start time is {{ snap1_start }}, end time is {{ snap1_end }}.
+Snapshot 2 start time is {{ snap2_start }}, end time is {{ snap2_end }}.
+Consider the comment from user in your analyzes. Comment related to snapshot 1: {{ snap1_m }}; Comment related to snapshot 2: {{ snap2_m }};
+
+Current section is about instance activity stats comparision and top wait events comparision, the whole report includes following sections: General Information, Non-default database parameters, Instance Activity Stats, Wait events, special metrics derived from other metrics, os metrics, database metrics, SQLs (texts of the SQLs and stats for each SQL).
+
+Important knowledge to consider first: <knowledge>
+
+{{ knowledge }}
+
+</knowledge>
+
+Consider following descriptions of the wait events:
+{{ events }}
+
+
+To accomplish this task, follow these steps:
+1. Review and understand the knowledge related to the particular engine provided in the <knowledge></knowledge> tags.
+2. Review the provided tables containing instance activity stats and top wait events from two different snapshots.
+3. Identify the significant differences between two snapshots which can affect instance configuration recommendations and performance troubleshooting.
+4. Summarize these important data and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report. Include your findings into the output.
+6. If you encounter any metrics or events that you do not fully understand or lack sufficient information about, explicitly mention it. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each property and its potential impact carefully.
+8. On output specify to which snaphsot the information belongs.
+9. Include hints to yourself, which you can use in the summary analyzes and recommendations.
+
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+{{ data }}
