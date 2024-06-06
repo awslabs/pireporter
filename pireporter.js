@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "1.5"
+global.version = "2.0"
 
 const fs = require('fs');
 const path = require('path');
@@ -59,6 +59,7 @@ const optionDefinitions = [
   { name: 'res-reserve-pct', type: Number, description: 'Specify the percentage of additional resources to reserve above the maximum metrics when generating instance type recommendations. Default is 15.'},
   { name: 'use-2sd-values', type: Boolean, description: 'To calculate the required resource for the workload, consider the average value plus 2 standard deviations (SDs). By default the maximum usage is used.'},
   { name: 'comment', alias: 'm', type: String, description: 'Provide a comment to associate with the snapshot.'},
+  { name: 'ai-analyzes', alias: 'a', type: Boolean, description: 'When generating reports, include the analysis from the language model (Amazon Bedrock: Claude by Anthropic), which provides its findings, analysis, and recommendations. This option works with create report and create compare periods report.'},
   { name: 'create-report', alias: 'r', type: Boolean, description: 'Create HTML report for snapshot.'},
   { name: 'create-compare-report', alias: 'c', type: Boolean, description: 'Create compare snapshots HTML report for two snapshots.'},
   { name: 'snapshot', type: String, description: 'Snapshot JSON file name.'},
@@ -118,6 +119,14 @@ if (options.help) {
 if (options.version) {
    console.log(global.version)
    process.exit()
+}
+
+
+if (fs.existsSync('./conf.json')) {
+    var conf = JSON.parse(fs.readFileSync('./conf.json', 'utf8'))
+} else {
+    console.error('Cant load ./conf.json. Chec kif file exists in the current directory.')
+    process.exit(1)
 }
 
 
@@ -2526,7 +2535,6 @@ rds.describeDBInstances(params, async function(err, data) {
           BackupRetentionPeriod,
           DBParameterGroups,
           AvailabilityZone,
-          MultiAZ,
           EngineVersion,
           AutoMinorVersionUpgrade,
           StorageType,
@@ -2564,6 +2572,8 @@ rds.describeDBInstances(params, async function(err, data) {
       let command = new DescribeDBClustersCommand({DBClusterIdentifier: DBClusterIdentifier});
       let response = await rds.send(command);
       let myInstance = response.DBClusters[0].DBClusterMembers.find(i => i.DBInstanceIdentifier === DBInstanceIdentifier)
+      var StorageEncrypted = response.DBClusters[0].StorageEncrypted
+      var MultiAZ = response.DBClusters[0].MultiAZ
       var IsWriter = myInstance.IsClusterWriter
       if (IsWriter === true) {
          var WriterInstanceIdentifier = DBInstanceIdentifier
@@ -2586,6 +2596,7 @@ rds.describeDBInstances(params, async function(err, data) {
           IsWriter,
           WriterInstanceIdentifier,
           NumberOfOtherInstances,
+          StorageEncrypted,
           DBInstanceArn,
           DBInstanceClass,
           minACUs,
@@ -3136,7 +3147,9 @@ const getDBLogFiles = async function (GeneralInformation) {
               //console.log('logfile line', line)
               const timestamp = line.split("UTC::")[0].trim();
               const lineTimestamp = new Date(timestamp).getTime();
-              const containsKWords = /CRITICAL|ERROR/i.test(line);
+              const keywords = conf.logFilesCheckRegExp.value;
+              const pattern = new RegExp(keywords, "i");
+              const containsKWords = pattern.test(line);
               return lineTimestamp >= startTime && lineTimestamp <= endTime && containsKWords;
             });
         
@@ -3215,7 +3228,7 @@ if (options["create-report"]) {
   
   var htmlReportFileName = path.basename(snapshotLocation).replace(/\.json$/, ".html").replace(/^snapshot_/, "report_");
   
-  var htmlReport = await generateHTMLReport(snapshotObject)
+  var htmlReport = await generateHTMLReport(snapshotObject, options["ai-analyzes"])
   
   try {
        await fs.promises.writeFile(path.join(getReportsDirectory(), htmlReportFileName), htmlReport);
@@ -3278,7 +3291,7 @@ if (options["create-compare-report"]) {
      var instanceNameString = (instanceName1 === instanceName2) ? instanceName1 : `${instanceName1}_${instanceName2}`
      var htmlReportFileName = `compare_report_${instanceNameString}_${dateRange1}-${dateRange2}.html`;
      
-     var htmlReport = await generateCompareHTMLReport(snapshotObject, snapshotObject2)
+     var htmlReport = await generateCompareHTMLReport(snapshotObject, snapshotObject2, options["ai-analyzes"])
      
      try {
           await fs.promises.writeFile(path.join(getReportsDirectory(), htmlReportFileName), htmlReport);

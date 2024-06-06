@@ -48,6 +48,14 @@
                     "rds:cluster-tag/pireporter": "allow"
                 }
             }
+        },
+        {
+            "Sid": "pireporter4",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:InvokeModel"
+            ],
+            "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
         }
     ]
 }

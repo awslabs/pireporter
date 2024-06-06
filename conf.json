@@ -1,0 +1,25 @@
+{
+    "logFilesParallelDegree": { "value": 5,
+                                "description": "Number of parallel API calls to download database logfiles."},
+                              
+    "logFilesCheckRegExp": { "value": "CRITICAL|ERROR",
+                             "description": "The RegExp wich will be used to analyze the database log files. Case insensitive."},
+                               
+    "metricsCorrelationThreshold": { "value": 0.7,
+                                     "description": "How much metrics should correlate in correlated metrics section. Default is 0.7 or 70%."},
+    
+    "tempPriceFileRetentionDays": { "value": 7,
+                                    "description": "The retention period in days of the pricelist file. If file is older than this number of days, it will be downloaded again."},
+    
+    "inferenceParallelDegree": { "value": 8,
+                                 "description": "Number of parallel Bedrock inference calls to execute."},
+    
+    "bedrockRegion": { "value": "us-east-1",
+                       "description": "The AWS region for Amazon Bedrock to use."},
+    
+    "claudeMode": { "value": "anthropic.claude-3-sonnet-20240229-v1:0",
+                    "description": "The claude model to use for analyzes."},
+    
+    "anthropicVersion": { "value": "bedrock-2023-05-31",
+                          "description": "The version of Anthropic to use in Bedrock API call."}
+}

@@ -1,0 +1,19 @@
+Misc:
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+db.SQL.logical_reads: Total number of blocks read from both cache and disk.
+
+Summary of the key points about tuning Aurora PostgreSQL:
+- In case of Aurora, ignore Mulit-AZ configuration value, its not relevant for Aurora. If Aurora has read only instances in different region, then it is a great high availability solution for fast failover.
+- When you consider the wait events, always make attention on the impact of this event (the percent from DB Time). Even if wait event exists, it doesnt mean that it has negative effect. It can have very low impact. For example if IPC:BufferIO: 0.45% of DB time, then it is very low impact event, or if IPC:ExecuteGather: 0.05% of DB time, then it is negligibly low impact and can be ignored.
+- Alsways consider the resource limits of the instance and actual usage, hitting the resource limits is an issue which needs very high attention.
+- Consider that one of the most widely detected problems is a missing or stale table or index statistics. It can lead to inefficient execution plans or access paths. Always add recommendations to analyze the objects and gather fresh statistics.
+- Always check the number of executions in different snapshots; it can help identify if the problem could be just a high number of executions and not problems with query optimizations.
+- Consider that optimizer stats can be stale if the query behaves differently on an approximately similar number of executions, along with missing or incorrect index usage.
+- Understanding wait events is crucial, as they indicate when a session is waiting on resources like locks, disk I/O, log writes, etc. High wait times typically signal performance issues.
+- Aurora PostgreSQL memory is divided into shared memory areas like the buffer pool for caching data pages, WAL buffers for transaction logs; and local memory areas for each backend process like work memory for sorts/hashes, temp buffers, etc. Sizing these areas properly is important.
+- Aurora uses multiple processes - the postmaster process forks backend processes for client connections and background processes like the WAL writer, background writer, autovacuum, etc.
+- The shared buffer pool caches data pages in memory to reduce disk I/O. Proper sizing of shared_buffers is critical.
+- Work memory areas are used for sorts, hashes, index creation, etc. Setting work_mem appropriately prevents excessive disk spilling.
+- WAL logging is key for recovery and reducing disk I/O. Setting wal_level controls how much is logged.
+- Autovacuum automates vacuum/analyze to reclaim space and update stats. But it can cause I/O spikes if not tuned well.
