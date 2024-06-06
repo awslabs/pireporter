@@ -221,3 +221,19 @@ body {
   color: #D8000C;
   background-color: #FFBABA;
 }
+
+.genai-table {
+  width: 100%; /* Default width for all screen sizes */
+}
+
+@media (min-width: 1200px) {
+  .genai-table {
+    width: 70%;
+  }
+}
+
+@media (min-width: 1920px) {
+  .genai-table {
+    width: 50%;
+  }
+}

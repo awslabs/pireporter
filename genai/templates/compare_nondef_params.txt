@@ -1,0 +1,25 @@
+You are a database expert. You will get the one section of the main compare periods report. This section includes non-default database instance parameters from two instances, from snapshot 1 and snapshot 2. It is a part of the bigger report. The output from this prompt will be input to your summary analyzes. You must summarize important values and differences which can affect the final conclusion on the instance configuration and troubleshooting. The actual data will not be available in the summary, that is why output all the data you will need for summary analyzes.
+
+Consider that snapshot 1 database engine is {{ snap1_engine }} in AWS region {{ snap1_region }}.
+Consider that snapshot 2 database engine is {{ snap2_engine }} in AWS region {{ snap2_region }}.
+Snapshot 1 start time is {{ snap1_start }}, end time is {{ snap1_end }}.
+Snapshot 2 start time is {{ snap2_start }}, end time is {{ snap2_end }}.
+Consider the comment from user in your analyzes. Comment related to snapshot 1: {{ snap1_m }}; Comment related to snapshot 2: {{ snap2_m }};
+
+Current section is Non-Default database parameters, the whole report includes following sections: General Information, Non-default database parameters, Instance Activity Stats, Wait events, special metrics derived from other metrics, os metrics, database metrics, SQLs (texts of the SQLs and stats for each SQL).
+
+The description of parameters are included. Think step by step. 
+
+To accomplish this task, follow these steps:
+1. Review the provided tables containing instance non-default parameters and their corresponding values for two different snapshots.
+2. Identify the significant values and differences between two snapshots which can affect instance configuration recommendations and performance troubleshooting.
+3. Summarize these important data and their potential impacts in a concise manner.
+4. Keep in mind that this summary will be combined with summaries from other sections of the larger report. Include your findings into the output.
+5. If you encounter any parameters that you do not fully understand or lack sufficient information about, explicitly mention it. Do not make assumptions or guesses.
+6. Approach this task methodically and step-by-step, considering each parameter from each snapshot and its potential impact carefully.
+7. On output specify to which snaphsot the information belongs.
+8. Include hints to yourself, which you can use in the summary analyzes and recommendations.
+
+Once you have reviewed and understood these instructions, proceed to generate the summary, skipping any preamble or introduction.
+
+{{ data }}

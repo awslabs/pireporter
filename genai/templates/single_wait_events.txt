@@ -1,0 +1,31 @@
+You are a database expert. You will get one section of the main database statistics report. This section includes instance activity stats and top wait events of the database instance. It is very important part of the report. Format of the data is  HTML tables. It is a part of the bigger report. The output from this prompt will be input to your summary analyzes. You must summarize important values which can affect the final conclusion on the instance configuration and troubleshooting. The actual data will not be available in the summary, that is why output all the data you will need for summary analyzes.
+
+Consider that database engine is {{ engine }} in AWS region {{ region }}.
+Report start time is {{ start }}, end time is {{ end }}.
+Consider the comment from user in your analyzes. User Comment related to this report period: {{ m }}
+
+Current section is about instance activity stats and top wait events, the whole report includes following sections: General Information, Non-default database parameters, Instance Activity Stats, Wait events, special metrics derived from other metrics, os metrics, database metrics, SQLs (texts of the SQLs and stats for each SQL).
+
+Important knowledge to consider first: <knowledge>
+
+{{ knowledge }}
+
+</knowledge>
+
+Consider following descriptions of the wait events:
+{{ events }}
+
+
+To accomplish this task, follow these steps:
+1. Review and understand the knowledge related to the particular engine provided in the <knowledge></knowledge> tags.
+2. Review the provided HTML tables containing instance activity stats and top wait events from the current reporting period.
+3. Identify the significant values and metrics which can affect instance performance troubleshooting and analyzes.
+4. Summarize these important data and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report. Include your findings into the output.
+6. If you encounter any metrics or events that you do not fully understand or lack sufficient information about, explicitly mention it. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each property and its potential impact carefully.
+8. Include hints to yourself, which you can use in the summary analyzes and recommendations.
+
+Once you have reviewed and understood these instructions, proceed to generate the summary for this section of the report, skipping any preamble or introduction.
+
+{{ data }}

@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { LLMGenerator } = require('./genai.js')
 
 // Get cusrrent date in de-DE format
 const getCurrDate = function() {
@@ -207,6 +208,15 @@ const tableFromArrayOfObjects = function(arr, table = true, header = false) {
 }
 
 
+const replaceSQLIDWithLink = function (text) {
+  const regex = /SQLID:([A-Z0-9]+)/g;
+  return text.replace(regex, (match, sqlid) => {
+     return `<a href="#S${sqlid}" class="sql-link">${sqlid}</a>`;
+  });
+}
+
+
+
 
 const htmlScript = `
   document.addEventListener('DOMContentLoaded', function() {
@@ -234,8 +244,17 @@ const htmlScript = `
 
 
 
-const generateHTMLReport = async function(snapshotObject) {
+const generateHTMLReport = async function(snapshotObject, genai) {
   return new Promise(async (resolve, reject) => {
+
+    if (genai) {
+       var genAI = new LLMGenerator('single_snapshot', {region: snapshotObject.$META$.region, 
+                                                          startTime: snapshotObject.$META$.startTime, 
+                                                          endTime: snapshotObject.$META$.endTime, 
+                                                          engine: snapshotObject.GeneralInformation.Engine, 
+                                                          comment: snapshotObject.$META$.commandLineOptions.comment || undefined})
+    }
+
     const snapshotDurationMin = Math.floor((new Date(snapshotObject.$META$.endTime).getTime() - new Date(snapshotObject.$META$.startTime).getTime()) / 1000) / 60
 
     try {
@@ -245,6 +264,7 @@ const generateHTMLReport = async function(snapshotObject) {
       console.error('Error reading file report.style:', err)
       process.exit(1)
     }
+
 
     //console.log('Parsed JSON object:', snapshotObject);
 
@@ -309,6 +329,7 @@ const generateHTMLReport = async function(snapshotObject) {
   </table>
   `
 
+    var WaitEvents = [...new Set([...snapshotObject.WaitEvents.TopEvents.map(obj => obj.event_name)])];
 
     var waitEventsHTML = `
   <table style="width:initial">
@@ -504,14 +525,19 @@ const generateHTMLReport = async function(snapshotObject) {
     }
 
 
+   var additionalMetricsHTML = generateAdditionalMetricsHTML(snapshotObject.Metrics.AdditionalMetrics)
+   var instanceRecommendationsHTML = generateInstanceRecommendationsHTML(snapshotObject.Metrics.WorkloadAnalyses)
+   var OSMetricsHTML = generateMetricsHTML(snapshotObject.Metrics.OSMetrics, 'OS')
+   var DBMetricsHTML = generateMetricsHTML(snapshotObject.Metrics.DBAuroraMetrics, 'DB')
+
     var metricsHTML = `
   <table style="width:initial" class="no-border">
    	   <caption>Metrics</caption>
    	   ${tr(td(staticMetricsHTML))}
-   	   ${tr(td(generateAdditionalMetricsHTML(snapshotObject.Metrics.AdditionalMetrics)))}
-   	   ${tr(td(generateInstanceRecommendationsHTML(snapshotObject.Metrics.WorkloadAnalyses)))}
-   	   ${tr(td(generateMetricsHTML(snapshotObject.Metrics.OSMetrics, 'OS')))}
-   	   ${tr(td(generateMetricsHTML(snapshotObject.Metrics.DBAuroraMetrics, 'DB')))}
+   	   ${tr(td(additionalMetricsHTML))}
+   	   ${tr(td(instanceRecommendationsHTML))}
+   	   ${tr(td(OSMetricsHTML))}
+   	   ${tr(td(DBMetricsHTML))}
    	   ${tr(td(correlationsHTML))}
   </table>
   `
@@ -713,9 +739,12 @@ const generateHTMLReport = async function(snapshotObject) {
 
     }
 
+    
+    var SQLsSortedByLoadHTML = generateSQLsHTML(snapshotObject.SQLs, 'LOAD')
+    var SQLTextsHTML = generateSQLTextsHTML(snapshotObject.SQLs)
 
     var SQLsHTML = `<div>
-    ${generateSQLsHTML(snapshotObject.SQLs, 'LOAD')}
+    ${SQLsSortedByLoadHTML}
     ${generateSQLsHTML(snapshotObject.SQLs, 'IOREAD')}
     ${generateSQLsHTML(snapshotObject.SQLs, 'IOWRITE')}
     ${generateSQLsHTML(snapshotObject.SQLs, 'IO')}
@@ -724,6 +753,42 @@ const generateHTMLReport = async function(snapshotObject) {
     `
 
     // SQLs section end
+
+
+
+    if (genai) {
+       var resp = await genAI.generateParallel([{section: 'single_general_info', data: generalInformationHTML},
+                                                {section: 'single_nondef_params', data: nonDefParametersHTML},
+                                                {section: 'single_wait_events', data: instanceActivityHTML + "\n" + waitEventsHTML, events: WaitEvents},
+                                                {section: 'single_static_metrics', data: staticMetricsHTML},
+                                                {section: 'single_additional_metrics', data: additionalMetricsHTML},
+                                                {section: 'single_instance_recommendations', data: instanceRecommendationsHTML},
+                                                {section: 'single_os_metrics', data: OSMetricsHTML},
+                                                {section: 'single_db_metrics', data: DBMetricsHTML}
+                                       ]);
+
+       var resp = await genAI.generate({section: 'single_summary', sqls: SQLsSortedByLoadHTML, sqltext: SQLTextsHTML})
+       console.log(replaceSQLIDWithLink(genAI.getSection('single_summary')))
+       console.log('LLM tokens used:', genAI.getUsage())
+    }
+
+    if (genai) {
+      var genAIanalyzesHTML = `
+       <table style="background-color: aliceblue;" class="genai-table container-table">
+        	   <caption style="background-color: aliceblue;"><span style="color: blue;">GenAI analyzes of the report</span>
+        	   ${infoMessage(`CAUTION: LLM can make mistakes. Verify this analyzes.`)}
+        	   </caption>
+        	   <td>
+        	      <div style="padding: 10px"><pre style="white-space: break-spaces;word-wrap: break-word;color: blue;font-weight: bold;">${replaceSQLIDWithLink(genAI.getSection('single_summary'))}</pre></div>
+        	   </td>
+       </table>
+       `
+    } else {
+      var genAIanalyzesHTML = ""
+    }
+
+
+
 
 
     // Log files section
@@ -813,6 +878,8 @@ const generateHTMLReport = async function(snapshotObject) {
        ${tr(td(snapshotObject.$META$.startTime)+td(snapshotObject.$META$.endTime)+td(snapshotDurationMin))}
   </table>
 
+${genAIanalyzesHTML}
+
 ${snapshotOptionsHTML}
 ${generalInformationHTML}
 ${nonDefParametersHTML}
@@ -840,8 +907,34 @@ ${logFilesHTML}
 
 
 
-const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject2) {
+
+
+
+
+
+
+
+
+
+
+// Compare periods report
+
+const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject2, genai) {
   return new Promise(async (resolve, reject) => {
+    
+    if (genai) {
+       var genAI = new LLMGenerator('compare_snapshots', {region: snapshotObject1.$META$.region, 
+                                                          startTime: snapshotObject1.$META$.startTime, 
+                                                          endTime: snapshotObject1.$META$.endTime, 
+                                                          engine: snapshotObject1.GeneralInformation.Engine, 
+                                                          comment: snapshotObject1.$META$.commandLineOptions.comment || undefined}, 
+                                                         {region: snapshotObject2.$META$.region, 
+                                                          startTime: snapshotObject2.$META$.startTime, 
+                                                          endTime: snapshotObject2.$META$.endTime, 
+                                                          engine: snapshotObject2.GeneralInformation.Engine, 
+                                                          comment: snapshotObject2.$META$.commandLineOptions.comment || undefined})
+    }
+    
     const snapshotDurationMin1 = Math.floor((new Date(snapshotObject1.$META$.endTime).getTime() - new Date(snapshotObject1.$META$.startTime).getTime()) / 1000) / 60
     const snapshotDurationMin2 = Math.floor((new Date(snapshotObject2.$META$.endTime).getTime() - new Date(snapshotObject2.$META$.startTime).getTime()) / 1000) / 60
 
@@ -954,7 +1047,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     var nonDefParametersHTML1 = ''
     if (snapshotObject1.NonDefParameters.length > 0) {
       nonDefParametersHTML1 = `<table style="width:initial">
-       <caption>Non-default parameters from parameter group: ${snapshotObject1.GeneralInformation.DBParameterGroups[0].DBParameterGroupName} [${snapshotObject1.GeneralInformation.DBParameterGroups[0].ParameterApplyStatus}]</caption>
+       <caption>Snapshot 1 non-default parameters from parameter group: ${snapshotObject1.GeneralInformation.DBParameterGroups[0].DBParameterGroupName} [${snapshotObject1.GeneralInformation.DBParameterGroups[0].ParameterApplyStatus}]</caption>
        ${tr(td('Parameter')+td('Value')+td('Apply type'), 'table-header')}
        ${printParams(snapshotObject1.NonDefParameters)}
        </table>`
@@ -962,7 +1055,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     var nonDefParametersHTML2 = ''
     if (snapshotObject2.NonDefParameters.length > 0) {
       nonDefParametersHTML2 = `<table style="width:initial" class="s2-r-bg">
-       <caption class="s2-c-color">Non-default parameters from parameter group: ${snapshotObject2.GeneralInformation.DBParameterGroups[0].DBParameterGroupName} [${snapshotObject2.GeneralInformation.DBParameterGroups[0].ParameterApplyStatus}]</caption>
+       <caption class="s2-c-color">Snapshot 2 non-default parameters from parameter group: ${snapshotObject2.GeneralInformation.DBParameterGroups[0].DBParameterGroupName} [${snapshotObject2.GeneralInformation.DBParameterGroups[0].ParameterApplyStatus}]</caption>
        ${tr(td('Parameter')+td('Value')+td('Apply type'), 'table-header s2-h-color')}
        ${printParams(snapshotObject2.NonDefParameters)}
        </table>`
@@ -985,15 +1078,9 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
   </table>
   `
 
-    var waitEventsHTML = `
-  <table style="width:initial">
-   	   <caption>Top wait events</caption>
-       ${tableFromArrayOfObjects(snapshotObject1.WaitEvents.TopEvents, false, true)}
-  </table>
-  `
 
     const printWaitEventsHTML = function(snap1, snap2) {
-      var mainHTML = ''
+      var mainHTML = '';
 
       const snap = [];
 
@@ -1072,13 +1159,17 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
 
     }
 
+    var WaitEvents = [...new Set([...snapshotObject1.WaitEvents.TopEvents.map(obj => obj.event_name), ...snapshotObject2.WaitEvents.TopEvents.map(obj => obj.event_name)])];
+    var waitEventsHTML = printWaitEventsHTML(snapshotObject1.WaitEvents.TopEvents, snapshotObject2.WaitEvents.TopEvents);
+
+    
 
     /// Metrics B /////
 
 
     var staticMetricsHTML1 = `
   <table style="width:initial" class="no-shadow">
-   	   <caption>EC2 stats</caption>
+   	   <caption>Snapshot 1 EC2 stats</caption>
    	   ${tr(td('Stat')+td('Value'), 'table-header')}
        ${tr(td('vCPUs')+td(tableFromArrayOfObjects(snapshotObject1.Metrics.StaticMetrics.vCPUs)))}
        ${tr(td('Memory (Kb)')+td(tableFromArrayOfObjects(snapshotObject1.Metrics.StaticMetrics.memory)))}
@@ -1088,7 +1179,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
 
     var staticMetricsHTML2 = `
   <table style="width:initial" class="no-shadow s2-r-bg">
-        <caption class="s2-c-color">EC2 stats</caption>
+        <caption class="s2-c-color">Snapshot 2 EC2 stats</caption>
         ${tr(td('Stat') + td('Value'), 'table-header s2-h-color')}
         ${tr(td('vCPUs') + td(tableFromArrayOfObjects(snapshotObject2.Metrics.StaticMetrics.vCPUs)))}
         ${tr(td('Memory (Kb)') + td(tableFromArrayOfObjects(snapshotObject2.Metrics.StaticMetrics.memory)))}
@@ -1102,6 +1193,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
   </tr>
   </table>
     `
+
 
     const generateMetricsHTML = function(snap1, snap2, type) {
       var mainHTML = ''
@@ -1375,7 +1467,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
       } else {
         return `
        <table style="width:initial" class="container-table">
-        	   <caption>Workload analyses for snapshotObject1shot period 1
+        	   <caption>Workload analyses for snapshot period 1
         	   ${infoMessage(`CAUTION: The information in this section is based solely on the data available in this report and only for this snapshot period. The information was created on a best effort basis and requires additional manual confirmation. It is included to make you aware that the resource could be a potential bottleneck for the workload. To get more reliable recommendations, use <a href="https://us-east-1.console.aws.amazon.com/compute-optimizer/home?region=${snapshotObject2.$META$.region}#/resources-lists/rds">AWS Compute Optimizer</a>`)}
         	   </caption>
         	   <td>
@@ -1395,19 +1487,23 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
   </table>`
 
 
+  var additionalMetricsHTML = generateAdditionalMetricsHTML(snapshotObject1.Metrics.AdditionalMetrics, snapshotObject2.Metrics.AdditionalMetrics)
+  var OSMetricsHTML = generateMetricsHTML(snapshotObject1.Metrics.OSMetrics, snapshotObject2.Metrics.OSMetrics, 'OS')
+  var DBMetricsHTML = generateMetricsHTML(snapshotObject1.Metrics.DBAuroraMetrics, snapshotObject2.Metrics.DBAuroraMetrics, 'DB')
 
     var metricsHTML = `
   <table style="width:initial" class="no-border">
    	   <caption>Metrics</caption>
    	   ${tr(td(staticMetricsHTML))}
-   	   ${tr(td(generateAdditionalMetricsHTML(snapshotObject1.Metrics.AdditionalMetrics, snapshotObject2.Metrics.AdditionalMetrics)))}
+   	   ${tr(td(additionalMetricsHTML))}
    	   ${tr(td(instanceRecommendationsHTML))}
-   	   ${tr(td(generateMetricsHTML(snapshotObject1.Metrics.OSMetrics, snapshotObject2.Metrics.OSMetrics, 'OS')))}
-   	   ${tr(td(generateMetricsHTML(snapshotObject1.Metrics.DBAuroraMetrics, snapshotObject2.Metrics.DBAuroraMetrics, 'DB')))}
+   	   ${tr(td(OSMetricsHTML))}
+   	   ${tr(td(DBMetricsHTML))}
    	   ${tr(td(correlationsHTML))}
   </table>
   `
-
+  
+    
     /// Metrics E /////
 
 
@@ -1768,7 +1864,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
             td(compare(loadByDB(snap1, sortedSQLs[i].sql_id), loadByDB(snap2, sortedSQLs[i].sql_id)), 'c-r-bg') + // load by DB
             td(compare(loadByUser(snap1, sortedSQLs[i].sql_id), loadByUser(snap2, sortedSQLs[i].sql_id)), 'c-r-bg') // load by user
         
-            rows = `${rows}\n${tr(rowdata1)}\n${tr(rowdata2)}\n${tr(rowdata3)}`
+            rows = `${rows}\n<tr snapshot="1" sqlid="${sortedSQLs[i].sql_id}" >${rowdata1}</tr>\n<tr snapshot="2" sqlid="${sortedSQLs[i].sql_id}" >${rowdata2}</tr>\n<tr snapshot="diff" sqlid="${sortedSQLs[i].sql_id}" >${rowdata3}</tr>`
           
         } else {
         
@@ -1790,7 +1886,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
           td(sqlidHTML, bg) +
           td(sortedSQLs[i].sql_statement.substring(0, 60), bg)
           
-          rows = `${rows}\n${tr(rowdata)}`
+          rows = `${rows}\n<tr snapshot="${sortedSQLs[i].snap}" sqlid="${sortedSQLs[i].sql_id}" >${rowdata}</tr>`
         }
         
 
@@ -1848,16 +1944,52 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
 
     }
 
+    
+    var SQLsSortedByLoadHTML = generateSQLsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls, 'LOAD')
+    var SQLTextsHTML = generateSQLTextsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls)
 
     var SQLsHTML = `<div>
-    ${generateSQLsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls, 'LOAD')}
+    ${SQLsSortedByLoadHTML}
     ${generateSQLsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls, 'IOREAD')}
     ${generateSQLsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls, 'IOWRITE')}
     ${generateSQLsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls, 'IO')}
-    ${generateSQLTextsHTML(snapshotObject1.SQLs, snapshotObject2.SQLs, sqls)}
+    ${SQLTextsHTML}
     </div>
     `
+    
 /// SQL END
+
+    if (genai) {
+       var resp = await genAI.generateParallel([{section: 'compare_general_info', data: generalInformationHTML},
+                                                {section: 'compare_nondef_params', data: nonDefParametersHTML},
+                                                {section: 'compare_wait_events', data: instanceActivityHTML + "\n" + waitEventsHTML, events: WaitEvents},
+                                                {section: 'compare_static_metrics', data: staticMetricsHTML},
+                                                {section: 'compare_additional_metrics', data: additionalMetricsHTML},
+                                                {section: 'compare_instance_recommendations', data: instanceRecommendationsHTML},
+                                                {section: 'compare_os_metrics', data: OSMetricsHTML},
+                                                {section: 'compare_db_metrics', data: DBMetricsHTML}
+                                       ]);
+
+       var resp = await genAI.generate({section: 'compare_summary', sqls: SQLsSortedByLoadHTML, sqltext: SQLTextsHTML})
+       console.log(replaceSQLIDWithLink(genAI.getSection('compare_summary')))
+       console.log('LLM tokens used:', genAI.getUsage())
+    }
+
+    if (genai) {
+      var genAIanalyzesHTML = `
+       <table style="background-color: aliceblue;" class="genai-table container-table">
+        	   <caption style="background-color: aliceblue;"><span style="color: blue;">GenAI analyzes of the report</span>
+        	   ${infoMessage(`CAUTION: LLM can make mistakes. Verify this analyzes.`)}
+        	   </caption>
+        	   <td>
+        	      <div style="padding: 10px"><pre style="white-space: break-spaces;word-wrap: break-word;color: blue;font-weight: bold;">${replaceSQLIDWithLink(genAI.getSection('compare_summary'))}</pre></div>
+        	   </td>
+       </table>
+       `
+    } else {
+      var genAIanalyzesHTML = ""
+    }
+
 
 
 // Log files section
@@ -1999,10 +2131,12 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
   </tr>
   </table>
   
+  ${genAIanalyzesHTML}
+  
   ${generalInformationHTML}
   ${nonDefParametersHTML}
   ${instanceActivityHTML}
-  ${printWaitEventsHTML(snapshotObject1.WaitEvents.TopEvents, snapshotObject2.WaitEvents.TopEvents)}
+  ${waitEventsHTML}
   ${metricsHTML}
   ${infoMessage(columnDescriptionsSQLs(), 'fit-content', 'top')}
   ${SQLsHTML}

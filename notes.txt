@@ -137,8 +137,73 @@ Suggested maximum ACUs based on the maximum ACU estimated: 2
 
 
 
+aws ec2 describe-instance-types --filters "Name=instance-type,Values=r6g.*" --query "InstanceTypes[].[InstanceType, NetworkInfo.NetworkPerformance, NetworkInfo.NetworkCards[0].BaselineBandwidthInGbps]" --output table
+
+# CloudWatch metric AuroraEstimatedSharedMemoryBytes 
+# Update IAM policy to account for DescribeGlobalClustersCommand
+# Consider local storage IOPS and Throughput and bandwidth !!!
+# Use following data:
+
+aws ec2 describe-instance-types --region eu-central-1 --filters "Name=instance-type,Values=r6g.xlarge"
+"EbsInfo": {
+                "NvmeSupport": "required", 
+                "EbsOptimizedSupport": "default", 
+                "EncryptionSupport": "supported", 
+                "EbsOptimizedInfo": {
+                    "BaselineIops": 6000, 
+                    "MaximumThroughputInMBps": 593.75, 
+                    "MaximumIops": 20000, 
+                    "MaximumBandwidthInMbps": 4750, 
+                    "BaselineThroughputInMBps": 148.5, 
+                    "BaselineBandwidthInMbps": 1188
+                }
+            }
 
 
+"NetworkInfo": {
+                "NetworkPerformance": "Up to 10 Gigabit",
+                "MaximumNetworkInterfaces": 4,
+                "MaximumNetworkCards": 1,
+                "DefaultNetworkCardIndex": 0,
+                "NetworkCards": [
+                    {
+                        "NetworkCardIndex": 0,
+                        "NetworkPerformance": "Up to 10 Gigabit",
+                        "MaximumNetworkInterfaces": 4,
+                        "BaselineBandwidthInGbps": 1.25,
+                        "PeakBandwidthInGbps": 10.0
+                    }
+                ],
+                "Ipv4AddressesPerInterface": 15,
+                "Ipv6AddressesPerInterface": 15,
+                "Ipv6Supported": true,
+                "EnaSupport": "required",
+                "EfaSupported": false,
+                "EncryptionInTransitSupported": false,
+                "EnaSrdSupported": false
+            }
+
+
+
+ EC2Details: {
+    CurrentGeneration: true,
+    CPUClockSpeedInGhz: 2.5,
+    DefaultVCpus: 16,
+    DefaultCores: 16,
+    MemorySizeInMiB: 131072,
+    NetworkPerformance: 'Up to 10 Gigabit',
+    NetworkPerformanceMbps: 10000,
+    NetworkBaselineMbps: 5000,
+    BurstableNetworkPerformance: 'yes',
+    EBSOptimized: 'yes',
+    EBSMaximumBandwidthInMbps: 4750,
+    EBSBaselineBandwidthInMbps: 4750,
+    EBSBurstable: 'no',
+    EBSMaximumIops: 20000,
+    EBSBaselineIops: 20000
+  }
+  
+  
 
 
 
@@ -155,6 +220,59 @@ node /home/ec2-user/repolinter/repolinter/bin/repolinter.js lint ./ -r /home/ec2
 
 zip archive.zip * -x *.html snapshot_*.json node_modules portable price.json
 
+# At 12:00 CET  TPROC-H schema build started.
+
+
+Aurora Instance Network traffic
+1. NetworkThroughput
+2. AuroraStorageNetworkThroughput
+3. EBS NetworkThroughput
+
+
+
+max 8844
+avg 5044
+diff 3800
+
+AVG: 6944
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+You are a database expert responsible for databases running on AWS managed services like Aurora and RDS. Your goal is to analyze the compare period report of the database instance where two snapshots are compared. Your goal is to identify the potential change in the workload and the source of the problem and provide the recommendations on how to remediate them. Your goal also includes providing some recommendations on improving the configurational problems, like lack of high availability, encryption or backups. During analyzes consider that the database engine for this report for snapshot 1 is Aurora PostgreSQL and for snapshot 2 is Aurora PostgreSQL. You already done the analyzes of the each sections fo the report and summarised important parts of them, now your goal is generate the final recommendations and findings based on these summaries. Consider the additional knowladge in <knowladge></knowladge> tag and metric definitions in <metric_definitions></metric_definitions> tags.
+    You must analyze the metrics and find relations between them, if one metric increased significalty but other not, or both increaed, or one increaed and another decreased, check the <analysis_examples></analysis_examples> section to see some examples of such analyzes.
+
+
+<knowladge>
+If StorageType is aurora, then ignore Mulit-AZ configuration value.
+StorageType aurora means that sotrage is shared between all attached instances (writer and all readers) and its automatically mirrored accross three availability zones. In case of Aurora relevant is the NumberOfOtherInstances, if its 0, then suggest to add reader instance for faster failover in case writer fails.
+Performance instance can be enabled for the instance. For 7 days performance history its free. For this troubleshooting tool to work it must be enabled. When its enabled it callect important OS and database stats and metrics.
+When database logs exported to cloudwatch it makes it easier to analyze them, users can also create alarms based on some patters, for example if specific message appers in log file action can be taken including mail notification.
+EC2 Details can help in understanding the resource shortage. From other sections of report it can be identified, the actual resource usage, then it can be compared to these specifications. Consider that if baseline specification differs from regular specification it means that the resource is burstable. For example if NetworkPerformanceMbps is 10000 and NetworkBaselineMbps is 5000, it means that baseline (or regular) network performance for this instance is 5000, and it can burst up to 10000 for very short period of time, for 1 hour in 24 hour period. Which means that we need to consider the baseline specification in our calculations.
+The instances of the Aurora databases on AWS has two network interfaces, one of them related to data transfer from and to aurora shared storage, traffic to/from users and to other reader instances from writer instance. Which means that bottelneck on IO can be a network. The separate network interface is used to read and write to EBS volumes for activities which require temporary storage for operations which do not fit into memory work_mem like sorting, ordering, maintenance operations and others.
+</knowladge>
+
+<metric_definitions>
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+</metric_definitions>
+
+<analysis_examples>
+Example case 1: If db.SQL.tup_fetched didnt changed, but db.SQL.tup_returned changed significantly, it can indicate that sqls still fetch same amount of data but require to process more rows. It can indicate that queries switched to inoptimal indexes or full scans, which in its turn can indicate lack of table or index statistics.
+
+Example case 2: If db.SQL.tup_fetched didnt changed, but db.IO.blks_read number of disk blocks read increaed significantly, then it can indicate that some queries switched from index access to table sequential scans. Which can indicate that some objects lack statistics.
+
+</analysis_examples>
+
+Separate instance configuration recommendations from troubleshooting results. First list configuration recommendations, then troubleshooting results.
+
+Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+
+Once you have reviewed and understood these instructions, proceed to generate the summary skipping any preamble or introduction.
+
+Now the summaries from all sections of the report follows:
 
 
 
@@ -162,8 +280,785 @@ zip archive.zip * -x *.html snapshot_*.json node_modules portable price.json
 
 
 
-2023-08-02 14:50-15:50 
-2023-08-04 13:15-14:15 
+
+
+
+You are a database expert. Consider this compare report for the general information about instances from snapshot 1 and snapshot 2 from the Aurora PostgreSQL.
+First Value column is from snapshot 1, the second Value column is from snapshot 2, the column Diff shows the difference if any.
+It is a part of the bigger report. You must summarize important properties and differences which can affect the final conclusion on the instance configuration and troubleshooting. 
+This section can help you to provide some recommendations, like if encryption is not enabled, recommend to enable it, of if high availability is at risk, backaup reteniton etc.
+You will combine this summary with other summaries from other report sections related to performance metrics. This section of the report will not be availabel in the summary, that is why output all required data and numbers which can be needed.
+
+Knowladge to consider:
+If StorageType is aurora, then ignore Mulit-AZ configuration value.
+StorageType aurora means that sotrage is shared between all attached instances (writer and all readers) and its automatically mirrored accross three availability zones. In case of Aurora relevant is the NumberOfOtherInstances, if its 0, then suggest to add reader instance for faster failover in case writer fails.
+Performance instance can be enabled for the instance. For 7 days performance history its free. For this troubleshooting tool to work it must be enabled. When its enabled it callect important OS and database stats and metrics.
+When database logs exported to cloudwatch it makes it easier to analyze them, users can also create alarms based on some patters, for example if specific message appers in log file action can be taken including mail notification.
+EC2 Details can help in understanding the resource shortage. From other sections of report it can be identified, the actual resource usage, then it can be compared to these specifications. Consider that if baseline specification differs from regular specification it means that the resource is burstable. For example if NetworkPerformanceMbps is 10000 and NetworkBaselineMbps is 5000, it means that baseline (or regular) network performance for this instance is 5000, and it can burst up to 10000 for very short period of time, for 1 hour in 24 hour period. Which means that we need to consider the baseline specification in our calculations.
+
+The description of reports are included. If you don't have information or do not understand some parameters, ask explicitly for this information; do not guess. Think step by step. 
+Now, review the provided table and generate the summary of important properties and differences, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing instance properties and their corresponding values for two different snapshots.
+2. Identify the significant properties and differences which can affect instance configuration recommendations and troubleshooting.
+3. Summarize these important properties and their potential impacts in a concise manner.
+4. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+5. If you encounter any properties that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+6. Approach this task methodically and step-by-step, considering each property and its potential impact carefully.
+
+Once you have reviewed and understood these instructions, proceed to generate the summary, skipping any preamble or introduction.
+
+<table style="width:initial">
+     	   <caption>General information</caption>
+     	   <tr class="table-header"><td>Name</td><td>Value</td><td class="s2-h-bg">Value</td><td class="c-h-bg">Diff</td></tr>
+<tr><td>DBInstanceIdentifier</td><td>apg-bm</td><td class="s2-r-bg">apg-bm</td><td class="c-r-bg">=</td></tr>
+<tr><td>IsWriter</td><td>true</td><td class="s2-r-bg">true</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>WriterInstanceIdentifier</td><td>apg-bm</td><td class="s2-r-bg">apg-bm</td><td class="c-r-bg">=</td></tr>
+<tr><td>NumberOfOtherInstances</td><td>2</td><td class="s2-r-bg">2</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>DBInstanceArn</td><td>arn:aws:rds:eu-central-1:457810000006:db:apg-bm</td><td class="s2-r-bg">arn:aws:rds:eu-central-1:457810000006:db:apg-bm</td><td class="c-r-bg">=</td></tr>
+<tr><td>DBInstanceClass</td><td>db.r6g.4xlarge</td><td class="s2-r-bg">db.r6g.4xlarge</td><td class="c-r-bg">=</td></tr>
+<tr><td>Engine</td><td>aurora-postgresql</td><td class="s2-r-bg">aurora-postgresql</td><td class="c-r-bg">=</td></tr>
+<tr><td>DbiResourceId</td><td>db-MTIMKDWXME66IP2QFBSIZWCNXY</td><td class="s2-r-bg">db-MTIMKDWXME66IP2QFBSIZWCNXY</td><td class="c-r-bg">=</td></tr>
+<tr><td>DBInstanceStatus</td><td>available</td><td class="s2-r-bg">available</td><td class="c-r-bg">=</td></tr>
+<tr><td>Endpoint</td><td><table class="no-shadow">
+<tr><td>Address</td><td>apg-bm.cck3gfoar91m.eu-central-1.rds.amazonaws.com</td></tr>
+<tr><td>Port</td><td>5432</td></tr>
+<tr><td>HostedZoneId</td><td>Z1RLNUO7B9Q6NB</td></tr></table></td><td class="s2-r-bg"><table class="no-shadow">
+<tr><td>Address</td><td>apg-bm.cck3gfoar91m.eu-central-1.rds.amazonaws.com</td></tr>
+<tr><td>Port</td><td>5432</td></tr>
+<tr><td>HostedZoneId</td><td>Z1RLNUO7B9Q6NB</td></tr></table></td><td class="c-r-bg">=</td></tr>
+<tr><td>InstanceCreateTime</td><td>2022-09-14T14:13:54.212Z</td><td class="s2-r-bg">2022-09-14T14:13:54.212Z</td><td class="c-r-bg">=</td></tr>
+<tr><td>BackupRetentionPeriod</td><td>7</td><td class="s2-r-bg">7</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>DBParameterGroups</td><td><table class="table-border"><tr><td>DBParameterGroupName</td><td>ParameterApplyStatus</td></tr>
+<tr><td>all-statements-copy</td><td>in-sync</td></tr></table></td><td class="s2-r-bg"><table class="table-border"><tr><td>DBParameterGroupName</td><td>ParameterApplyStatus</td></tr>
+<tr><td>all-statements-copy</td><td>in-sync</td></tr></table></td><td class="c-r-bg">=</td></tr>
+<tr><td>AvailabilityZone</td><td>eu-central-1a</td><td class="s2-r-bg">eu-central-1a</td><td class="c-r-bg">=</td></tr>
+<tr><td>MultiAZ</td><td>false</td><td class="s2-r-bg">false</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>EngineVersion</td><td>14.8</td><td class="s2-r-bg">14.8</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>AutoMinorVersionUpgrade</td><td>true</td><td class="s2-r-bg">true</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>StorageType</td><td>aurora</td><td class="s2-r-bg">aurora</td><td class="c-r-bg">=</td></tr>
+<tr><td>DBClusterIdentifier</td><td>apg-bm-cluster</td><td class="s2-r-bg">apg-bm-cluster</td><td class="c-r-bg">=</td></tr>
+<tr><td>DBClusterArn</td><td>arn:aws:rds:eu-central-1:457810000006:cluster:apg-bm-cluster</td><td class="s2-r-bg">arn:aws:rds:eu-central-1:457810000006:cluster:apg-bm-cluster</td><td class="c-r-bg">=</td></tr>
+<tr><td>PerformanceInsightsEnabled</td><td>true</td><td class="s2-r-bg">true</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>PerformanceInsightsRetentionPeriod</td><td>93</td><td class="s2-r-bg">93</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>EnabledCloudwatchLogsExports</td><td><table class="no-shadow"><td>postgresql</td></table></td><td class="s2-r-bg"><table class="no-shadow"><td>postgresql</td></table></td><td class="c-r-bg">=</td></tr>
+<tr><td>DeletionProtection</td><td>false</td><td class="s2-r-bg">false</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td>EC2Details</td><td><table class="no-shadow">
+<tr><td>CurrentGeneration</td><td>true</td></tr>
+<tr><td>CPUClockSpeedInGhz</td><td>2.5</td></tr>
+<tr><td>DefaultVCpus</td><td>16</td></tr>
+<tr><td>DefaultCores</td><td>16</td></tr>
+<tr><td>MemorySizeInMiB</td><td>131072</td></tr>
+<tr><td>NetworkPerformance</td><td>Up to 10 Gigabit</td></tr>
+<tr><td>NetworkPerformanceMbps</td><td>10000</td></tr>
+<tr><td>NetworkBaselineMbps</td><td>5000</td></tr>
+<tr><td>BurstableNetworkPerformance</td><td>yes</td></tr>
+<tr><td>EBSOptimized</td><td>yes</td></tr>
+<tr><td>EBSMaximumBandwidthInMbps</td><td>4750</td></tr>
+<tr><td>EBSBaselineBandwidthInMbps</td><td>4750</td></tr>
+<tr><td>EBSBurstable</td><td>no</td></tr>
+<tr><td>EBSMaximumIops</td><td>20000</td></tr>
+<tr><td>EBSBaselineIops</td><td>20000</td></tr></table></td><td class="s2-r-bg"><table class="no-shadow">
+<tr><td>CurrentGeneration</td><td>true</td></tr>
+<tr><td>CPUClockSpeedInGhz</td><td>2.5</td></tr>
+<tr><td>DefaultVCpus</td><td>16</td></tr>
+<tr><td>DefaultCores</td><td>16</td></tr>
+<tr><td>MemorySizeInMiB</td><td>131072</td></tr>
+<tr><td>NetworkPerformance</td><td>Up to 10 Gigabit</td></tr>
+<tr><td>NetworkPerformanceMbps</td><td>10000</td></tr>
+<tr><td>NetworkBaselineMbps</td><td>5000</td></tr>
+<tr><td>BurstableNetworkPerformance</td><td>yes</td></tr>
+<tr><td>EBSOptimized</td><td>yes</td></tr>
+<tr><td>EBSMaximumBandwidthInMbps</td><td>4750</td></tr>
+<tr><td>EBSBaselineBandwidthInMbps</td><td>4750</td></tr>
+<tr><td>EBSBurstable</td><td>no</td></tr>
+<tr><td>EBSMaximumIops</td><td>20000</td></tr>
+<tr><td>EBSBaselineIops</td><td>20000</td></tr></table></td><td class="c-r-bg">=</td></tr>
+    </table>
+
+OUTPUT:
+
+Based on the provided table, here is a summary of the important properties and differences that can affect instance configuration recommendations and troubleshooting:
+
+1. NumberOfOtherInstances: The value is 2, which means there are two reader instances in addition to the writer instance. Since StorageType is aurora, it is recommended to have at least one reader instance for faster failover in case the writer instance fails.
+
+2. PerformanceInsightsEnabled: This property is set to true, which means that Performance Insights is enabled for this instance. This is a good configuration as it allows collecting important OS and database metrics and statistics, which can be useful for troubleshooting and performance analysis.
+
+3. PerformanceInsightsRetentionPeriod: The retention period for Performance Insights data is set to 93 days, which should provide sufficient historical data for analysis.
+
+4. EnabledCloudwatchLogsExports: The "postgresql" log is being exported to CloudWatch, which can facilitate log analysis and allow setting up alarms based on specific log patterns.
+
+5. EC2Details: This section provides information about the underlying EC2 instance specifications, such as CPU, memory, network performance, and EBS (Elastic Block Store) performance. These details can be compared with the actual resource usage metrics from other sections of the report to identify potential resource bottlenecks or underutilization.
+
+   - It is important to note that while the NetworkPerformanceMbps is 10000, the NetworkBaselineMbps is 5000, indicating that the baseline network performance is 5000 Mbps, and it can burst up to 10000 Mbps for short periods.
+   - Similarly, the EBSMaximumBandwidthInMbps is 4750, but the EBSBaselineBandwidthInMbps is also 4750, meaning that the EBS bandwidth is not burstable.
+
+6. Other properties like DBInstanceClass (db.r6g.4xlarge), Engine (aurora-postgresql), EngineVersion (14.8), and BackupRetentionPeriod (7 days) provide additional context about the instance configuration.
+
+Please note that this summary focuses on the properties and differences that can directly impact instance configuration recommendations and troubleshooting. If you need further clarification or additional information about any specific property, feel free to ask.
+
+
+    
+
+
+
+
+
+
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+
+Here is a summary of the key points about tuning Aurora PostgreSQL:
+- Understanding wait events is crucial, as they indicate when a session is waiting on resources like locks, disk I/O, log writes etc. High wait times typically signal performance issues.
+- Aurora PostgreSQL memory is divided into shared memory areas like buffer pool for caching data pages, WAL buffers for transaction logs; and local memory areas for each backend process like work memory for sorts/hashes, temp buffers etc. Sizing these areas properly is important.
+- Aurora uses multiple processes - the postmaster process forks backend processes for client connections and background processes like the WAL writer, background writer, autovacuum etc. 
+- The shared buffer pool caches data pages in memory to reduce disk I/O. Proper sizing of shared_buffers is critical.
+- Work memory areas are used for sorts, hashes, indexes creation etc. Setting work_mem appropriately prevents excessive disk spilling.
+- WAL logging is key for recovery and reducing disk I/O. Setting wal_level controls how much is logged.
+- Autovacuum automates vacuum/analyze to reclaim space and update stats. But it can cause I/O spikes if not tuned well.
+
+
+Metric Definitions and Context:
+
+<IO:XactSync>
+The IO:XactSync wait event in Aurora PostgreSQL occurs when the database is waiting for the storage subsystem to acknowledge transaction commits or rollbacks. Here are the key points:
+Context:
+- It indicates the instance is spending time waiting for storage to confirm transaction data was processed.
+Likely Causes:
+- Network saturation between clients/instance or instance/storage
+- CPU pressure preventing the Aurora storage daemon from getting enough CPU time
+Actions:
+1. Monitor Resources:
+- Check WriteThroughput, CommitThroughput, WriteLatency, CommitLatency metrics
+- Check CPUUtilization - high values may starve the storage daemon
+2. Scale up CPU:
+- If CPU is the bottleneck, change to an instance type with more vCPUs
+3. Increase Network Bandwidth: 
+- Check for other I/O related waits like IO:DataFileRead, Client:ClientRead etc.
+- If network is saturated, change to an instance type with higher network bandwidth
+4. Reduce Number of Commits:
+- Combine statements into transaction blocks to reduce commit overhead
+The core issue is either insufficient CPU cycles for the storage daemon to process commits/rollbacks quickly, or network bottlenecks delaying the acknowledgment from storage. Monitoring metrics helps identify the constraint to address by scaling up CPU, network or reducing transactional workload.
+</IO:XactSync>
+
+<IO:DataFileRead>
+Here are the key points regarding the IO:DataFileRead wait event in Aurora PostgreSQL:
+- It occurs when a backend process needs to read a data page from storage because it is not available in the shared buffer pool.
+- Common causes include connection spikes, queries doing full sequential scans, CTAS/index creation on large tables, multiple vacuum workers, data ingestion triggering frequent ANALYZE, and resource starvation.
+- Recommended actions:
+1. Check predicates/filters in queries generating waits and consider indexing.
+2. Minimize impact of maintenance operations like VACUUM/ANALYZE by scheduling off-peak, partitioning large tables, disabling autoanalyze during large ingests.
+3. For high connection counts, use connection pooling, read replicas, scale up instance.
+4. Identify and optimize queries/operations doing full table scans using Performance Insights, pg_stat_statements etc.
+5. For large CTAS, index builds - increase maintenance_work_mem temporarily.
+6. Monitor for autovacuum triggers and tune vacuum parameters if needed.
+7. Ensure sufficient CPU, network bandwidth is available.
+The core idea is to reduce the number of pages needing to be read from disk by effective indexing, partitioning, optimizing queries, allocating more memory and leveraging read replicas. Monitoring metrics and query analysis helps pinpoint the root causes to apply relevant tuning steps.
+</IO:DataFileRead>
+<CPU>
+Here are the key points about the CPU wait event in Aurora PostgreSQL:
+- It indicates that a backend process is actively using or waiting for CPU time.
+- It can be identified when pg_stat_activity shows state='active' and wait_event_type/wait_event are null.
+- The DBLoadCPU metric in Performance Insights shows CPU usage by the database engine.
+- Likely causes of sudden CPU spikes include connection storms, workload changes like new queries/data size, changing execution plans, index maintenance etc.
+- Long-term high CPU could be due to too many concurrent backend processes, inefficient queries needing more buffers, CPU swapping/context switching.
+- Actions to take:
+1) Check if database or other processes are causing the CPU increase using Performance Insights metrics.
+2) Investigate if connection count has increased and take actions like connection pooling or upgrading instance size.
+3) Correlate CPU with metrics like block hits to identify inefficient queries and optimize them.
+4) For workload changes, revisit new queries, data size, indexing, parallel settings etc.
+5) Use Enhanced Monitoring to check for OS overload.
+In essence, correlating CPU waits with other metrics helps identify if it is caused by database workload issues that can be tuned or whether other system/application factors are responsible.
+</CPU>
+<LWLock:lock_manager>
+The LWLock:lock_manager wait event in Aurora PostgreSQL occurs when the engine needs to maintain the shared lock memory area to allocate, check, and deallocate locks when fast path locking is not possible. Here are the key points:
+Context:
+- Fast path locking reduces overhead for frequently acquired short-term locks unlikely to conflict
+- Non-fast path locking has higher overhead and can lead to this wait event
+Likely Causes:
+- Concurrent sessions exceeding vCPU count running queries that cannot use fast path locks
+- Heavily partitioned tables with queries not doing partition pruning
+- Connection storms creating excessive connections
+- DDL/DML locking frequently accessed relations
+Actions:
+1. Use Partition Pruning to avoid scanning unnecessary partitions
+2. Remove unused indexes to reduce locking overhead
+3. Tune queries to use fast path locking where possible (< 16 relations)
+4. Address other high wait events like Lock:Relation that drive lock_manager waits
+5. Reduce hardware bottlenecks by scaling up instance type
+6. Implement connection pooling to prevent connection storms
+7. Upgrade to newer PostgreSQL versions with improved partition handling
+The root cause is excessive non-fast path locking due to factors like lack of pruning, connection storms, unoptimized queries/schemas. Pruning, connection pooling, indexing strategy and upgrading the engine version can help mitigate these waits.
+</LWLock:lock_manager>
+<IO:AuroraStorageLogAllocate>A session is allocating metadata and preparing for a transaction log write.</IO:AuroraStorageLogAllocate>
+<LWLock:WALInsert>A process is waiting to insert write-ahead log (WAL) data into a memory buffer.</LWLock:WALInsert>
+<IO:BufFileRead and IO:BufFileWrite>
+Here are the key points about the IO:BufFileRead and IO:BufFileWrite wait events in Aurora PostgreSQL:
+- These occur when operations like sorts, joins, indexes etc. require more memory than allocated by work_mem or maintenance_work_mem parameters, causing temporary file spills to disk.
+- Common causes include:
+1) Queries needing more work memory (hash joins, order by, group by, window functions etc.)
+2) DDL operations like index creation, clustering needing more maintenance_work_mem
+3) Materialized view refreshes, CTAS statements involving memory-intensive operations
+- Actions to take:
+1) Identify problematic queries generating temp files using log_temp_files or cloudwatch metrics
+2) Optimize queries - check for cartesian joins, order/group by on too many columns
+3) Consider window functions instead of group by 
+4) Use pg_repack for recreating large indexes
+5) Increase work_mem and/or maintenance_work_mem parameters
+6) Ensure enough memory is reserved for shared buffers
+7) Reduce connections via pooling if high #connections causing memory pressure
+- The goal is to allocate enough memory to avoid spilling while leaving room for other memory areas like shared buffers.
+- Monitoring metrics like FreeLocalStorage, temp file logs, wait events along with query analysis helps pinpoint and fix the root causes.
+</IO:BufFileRead and IO:BufFileWrite>
+<Lock:transactionid>
+The Lock:transactionid wait event in Aurora PostgreSQL occurs when a transaction is waiting to acquire a row-level lock that is already held by another concurrent transaction. Here are the key points:
+Context:
+- It happens due to conflicting row-level locks between transactions involving UPDATE, SELECT FOR UPDATE, SELECT FOR KEY SHARE statements.
+- Blocked until the blocking transaction ends with COMMIT/ROLLBACK.
+Likely Causes:
+1. High Concurrency - More conflicts when highly concurrent workload contends for same rows.
+2. Idle in Transaction - Session has started a transaction but not committed/rolled back, holding row locks.
+3. Long-Running Transactions - Long-held row locks block other transactions.
+Actions:
+1. For High Concurrency:
+   - Lower number of active sessions
+   - Use connection pooling
+   - Redesign app logic to avoid conflicting UPDATE/SELECT FOR UPDATE/KEY SHARE
+2. For Idle Transactions:
+   - Enable autocommit where possible
+   - Ensure all code paths end transactions explicitly 
+   - Process query results after ending transactions
+3. For Long Transactions:
+   - Keep row locks out of long transactions
+   - Limit query length by using autocommit
+The root cause is conflicting row-level locking requirements from concurrent transactions. Monitoring pg_stat_activity and pg_locks helps identify idle/long transactions. Reducing concurrency, enabling autocommit, and optimizing transaction/locking patterns in application code can mitigate these waits.
+</Lock:transactionid>
+<LWLock:BufferIO or IPC:BufferIO>
+The LWLock:BufferIO (or IPC:BufferIO in Aurora PostgreSQL 14+) wait event occurs when PostgreSQL is waiting for other processes to finish I/O operations while concurrently trying to access the same page in the shared buffer pool. Here are the key points:
+Context:
+- Each shared buffer has an I/O lock associated with this wait event
+- It is used to handle multiple sessions requiring the same page to be read from storage into the buffer pool
+- The lock is released once the page is loaded into the shared buffers
+Causes:
+- Multiple backends trying to access the same page pending I/O
+- Mismatch between shared_buffers size and workload buffer requirements  
+- Frequent buffer evictions due to undersized shared_buffers
+- Bloated/missing indexes causing excessive page reads
+- Sudden spikes in connections accessing the same pages
+Actions:
+1. Monitor BufferCacheHitRatio - declining values along with BufferIO waits may indicate undersized shared_buffers
+2. Tune max_wal_size, checkpoint_timeout based on workload peaks coinciding with BufferIO waits
+3. Remove unused indexes to reduce page reads
+4. Use partitioning to reduce index bloat impact
+5. Avoid unnecessary indexing 
+6. Implement connection pooling to prevent connection spikes
+7. Restrict maximum connections as a best practice
+The root cause is contention on the I/O locks when multiple backends concurrently need to load the same pages into the shared buffer pool. Proper sizing of shared_buffers, optimizing indexes, connection pooling and workload segregation can help mitigate these waits.
+</LWLock:BufferIO or IPC:BufferIO>
+<LWLock:buffer_mapping>
+The LWLock:buffer_mapping (or LWLock:BufferMapping in Aurora PostgreSQL 13+) wait event occurs when a session is waiting to associate a data block with a buffer in the shared buffer pool. Here are the key points:
+Context:
+- It happens when processes need to load/remove pages from the shared buffer pool and acquire mapping locks.
+- The shared_buffers parameter sets the size of the shared buffer pool in memory.
+Causes:
+- Large queries requiring many pages to be loaded
+- Bloated indexes/tables leading to excessive page reads
+- Full table scans pulling in more data than fits in buffers
+- Shared buffer pool smaller than the working data set
+Actions:
+1. Monitor buffer metrics:
+   - Watch BufferCacheHitRatio, blks_hit, blks_read metrics
+   - Declining hit ratio or increasing reads can precede mapping waits
+2. Assess indexing strategy: 
+   - Check for index/table bloat causing extra page reads
+   - Ensure proper indexes exist for frequently used queries
+3. Reduce bursty buffer allocations:
+   - Perform smaller batch operations instead of large scans
+   - Partitioning tables can help reduce allocation bursts
+The root cause is excessive data pages needing to be loaded/unloaded from the buffer pool, leading to mapping lock contention. Monitoring buffer metrics, optimizing indexes, rightsizing shared_buffers and reducing bursty allocations can help mitigate these waits.
+</LWLock:buffer_mapping>
+<IO:DataFilePrefetch>A process is waiting for an asynchronous prefetch from a relation data file.</IO:DataFilePrefetch>
+
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+
+
+
+<table style="width:initial">
+   	   <caption>Instance activity stats</caption>
+   	   <tr class="table-header"><td>Stat</td><td>Value</td><td class="s2-h-bg">Value</td><td class="c-h-bg">Diff</td></tr>
+       <tr><td>Wallclock time (min)</td><td>60</td><td class="s2-r-bg">60</td><td class="c-r-bg">0 [0x|0%]</td></tr>
+       <tr><td>Average Active Sessions</td><td>1.16</td><td class="s2-r-bg">4.66</td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3.5 [4x|302%]</td></tr>
+       <tr><td>DBTime (min)</td><td>69.48</td><td class="s2-r-bg">279.43</td><td class="c-r-bg"><span style="color: green"><b>+</b></span>209.95 [4x|302%]</td></tr>
+  </table>
+  
+  
+        <table style="width:initial">
+           <caption>Top wait events</caption>
+      	   <tr class="table-header"><td>Event</td><td>Type</td><td>Metric time (sec)</td><td class="s2-h-bg">Metric time (sec)</td><td class="c-h-bg">Diff</td><td>Pct DB time</td><td class="s2-h-bg">Pct DB time</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td>IO:XactSync</td><td>IO</td><td>2524</td><td class="s2-r-bg">2335</td><td class="c-r-bg"><span style="color: red"><b>-</b></span>189 [1.1x|8%]</td><td>60.54</td><td class="s2-r-bg">13.93</td><td class="c-r-bg"><span style="color: red"><b>-</b></span>46.61 [4.3x|335%]</td></tr>
+<tr><td>IO:DataFileRead</td><td>IO</td><td>1077</td><td class="s2-r-bg">5321</td><td class="c-r-bg"><span style="color: green"><b>+</b></span>4244 [4.9x|394%]</td><td>25.83</td><td class="s2-r-bg">31.74</td><td class="c-r-bg"><span style="color: green"><b>+</b></span>5.91 [1.2x|23%]</td></tr>
+<tr><td>CPU</td><td>CPU</td><td>559</td><td class="s2-r-bg">3039</td><td class="c-r-bg"><span style="color: green"><b>+</b></span>2480 [5.4x|444%]</td><td>13.41</td><td class="s2-r-bg">18.13</td><td class="c-r-bg"><span style="color: green"><b>+</b></span>4.72 [1.4x|35%]</td></tr>
+<tr><td>LWLock:LockManager</td><td>LWLock</td><td>6</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>0.14</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td>IO:AuroraStorageLogAllocate</td><td>IO</td><td>2</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>0.05</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td>LWLock:WALInsert</td><td>LWLock</td><td>1</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>0.02</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td>IO:BufFileWrite</td><td>IO</td><td>-</td><td class="s2-r-bg">5890</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">35.13</td><td class="c-r-bg">-</td></tr>
+<tr><td>Lock:transactionid</td><td>Lock</td><td>-</td><td class="s2-r-bg">109</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">0.65</td><td class="c-r-bg">-</td></tr>
+<tr><td>IPC:BufferIO</td><td>IPC</td><td>-</td><td class="s2-r-bg">58</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">0.35</td><td class="c-r-bg">-</td></tr>
+<tr><td>LWLock:BufferMapping</td><td>LWLock</td><td>-</td><td class="s2-r-bg">9</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">0.05</td><td class="c-r-bg">-</td></tr>
+<tr><td>IO:DataFilePrefetch</td><td>IO</td><td>-</td><td class="s2-r-bg">6</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">0.04</td><td class="c-r-bg">-</td></tr>
+        </table>
+
+
+
+
+
+
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+Metric Definitions and Context:
+
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+
+<table style="width:initial" class="no-shadow">
+        	   <caption>Additional metrics</caption>
+        	   <tr class="table-header"><td>Name</td><td>Unit</td><td>Value</td><td class="s2-r-bg">Value</td><td class="c-r-bg">Diff</td></tr>
+        	   
+<tr><td><abbr title="Buffer cache hit ratio">Buffer cache hit ratio</abbr></td><td>Percent</td><td><abbr title="Percent">99.72</abbr></td><td class="s2-r-bg"><abbr title="Percent">98.25</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>1.47 [1x|1%]</td></tr>
+<tr><td><abbr title="The average value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.">Average estimated buffer pool memory used</abbr></td><td>MB</td><td><abbr title="1.83 GB">1873.51</abbr></td><td class="s2-r-bg"><abbr title="162.50 GB">166398.97</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>164525.46 [88.8x|8782%]</td></tr>
+<tr><td><abbr title="The maximum value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.">Max estimated buffer pool memory used</abbr></td><td>MB</td><td><abbr title="10.38 GB">10624.73</abbr></td><td class="s2-r-bg"><abbr title="313.88 GB">321414.43</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>310789.7 [30.3x|2925%]</td></tr>
+<tr><td><abbr title="The percentage of disk reads that come from logical reads (all reads).">Pct disk reads</abbr></td><td>Percent</td><td><abbr title="Percent">1.26</abbr></td><td class="s2-r-bg"><abbr title="Percent">76.02</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>74.76 [60.3x|5933%]</td></tr>
+<tr><td><abbr title="The number of tuples returned divided by the number of tuples fetched. High values can indicate intensive full and range scans or a high count of dead tuples">Tuples returned to fetched</abbr></td><td>Ratio</td><td><abbr title="Ratio">3</abbr></td><td class="s2-r-bg"><abbr title="Ratio">525</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>522 [175x|17400%]</td></tr>
+<tr><td><abbr title="The estimated maximum network throughput of the instance for the snapshot period. It includes user traffic, WAL stream to other instances or from master instance and Aurora storage throughput.">Estimated network throughput max</abbr></td><td>MB/s</td><td><abbr title="MB/s">262.97</abbr></td><td class="s2-r-bg"><abbr title="MB/s">1243.29</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>980.32 [4.7x|373%]</td></tr>
+<tr><td><abbr title="The estimated average network throughput of the instance for the snapshot period. It includes user traffic, WAL stream to other instances or from master instance and Aurora storage throughput.">Estimated network throughput average</abbr></td><td>MB/s</td><td><abbr title="MB/s">25.55</abbr></td><td class="s2-r-bg"><abbr title="MB/s">694.04</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>668.49 [27.2x|2616%]</td></tr>
+<tr><td><abbr title="The percentage of actual estimated max network traffic compared to the maximum available network throughput of the instance. Estimated netwrok traffic for the snapshot period was 262.97 MB/s and the maximum network throughput for this instance class is 1250 MB/s. Consider that this instace class has a burstable network throughput.">Pct network traffic to max limit</abbr></td><td>Percent</td><td><abbr title="Percent">21.04</abbr></td><td class="s2-r-bg"><abbr title="Percent">99.46</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>78.42 [4.7x|373%]</td></tr>
+<tr><td><abbr title="The percentage of actual estimated max network traffic compared to the baseline network throughput. The estimated baseline network throughput for this instance class is 625 MB/s. Consider that this baseline is only estimation and can differ from actual values.}">Pct network traffic to estimated baseline</abbr></td><td>Percent</td><td><abbr title="Percent">42.08</abbr></td><td class="s2-r-bg"><abbr title="Percent">198.93</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>156.85 [4.7x|373%]</td></tr>
+<tr><td><abbr title="The maximum local storage throughput observed during snapshot period. For instances without optimized reads, it is EBS storage.">Max local storage throughput</abbr></td><td>MB/s</td><td><abbr title="MB/s">24.52</abbr></td><td class="s2-r-bg"><abbr title="MB/s">182.76</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>158.24 [7.5x|645%]</td></tr>
+<tr><td><abbr title="The average local storage throughput observed during snapshot period. For instances without optimized reads, it is EBS storage.">Avg local storage throughput</abbr></td><td>MB/s</td><td><abbr title="MB/s">1.21</abbr></td><td class="s2-r-bg"><abbr title="MB/s">69.91</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>68.7 [57.8x|5678%]</td></tr>
+<tr><td><abbr title="The percent of maximum available EBS throughput, which is 593.75 MBps, utilized by actual maximum throughput during snapshot period.">Pct max local storage througput to max EBS throughput</abbr></td><td>Percent</td><td><abbr title="Percent">4.13</abbr></td><td class="s2-r-bg"><abbr title="Percent">30.78</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>26.65 [7.5x|645%]</td></tr>
+<tr><td><abbr title="Percent of average active sessions to average backends (connections). Average number of backends for the snapshot period was 5.42">Pct active sessions to connections</abbr></td><td>Percent</td><td><abbr title="Percent">21.42</abbr></td><td class="s2-r-bg"><abbr title="Percent">5.46</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>15.96 [3.9x|292%]</td></tr>
+<tr><td><abbr title="Percent of maximum backends (connections) in snapshot period to max_connections. Estimated max_connections for this instance is 5000">Pct max backends to max_connections</abbr></td><td>Percent</td><td><abbr title="Percent">0.34</abbr></td><td class="s2-r-bg"><abbr title="Percent">3.42</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3.08 [10.1x|906%]</td></tr>
+<tr><td><abbr title="Fetched tuples / DMLs (inserted + updated + deleted)">Tuples fetched to DMLs</abbr></td><td>Ratio</td><td><abbr title="Ratio">2</abbr></td><td class="s2-r-bg"><abbr title="Ratio">3</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1 [1.5x|50%]</td></tr>
+<tr><td><abbr title="Instance up time">Instance uptime</abbr></td><td>Time</td><td><abbr title="Time">8 months 1 day 5 hours 3 minutes</abbr></td><td class="s2-r-bg"><abbr title="Time">8 months 3 days 23 hours 3 minutes</abbr></td><td class="c-r-bg">&#8800;</td></tr>
+<tr><td><abbr title="Amount of storage volume used by the cluster apg-bm-cluster">Amount of used storage volume</abbr></td><td>GB</td><td><abbr title="GB">2550</abbr></td><td class="s2-r-bg"><abbr title="GB">2551</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1 [1x|0%]</td></tr>
+<tr><td><abbr title="This metric is generated only when Aurora PostgreSQL is using logical replication or AWS Database Migration Service. By default, Aurora PostgreSQL uses log records, not transaction logs. When transaction logs aren't in use, the value for this metric is -1">Storage used by WALs</abbr></td><td>KB</td><td><abbr title="-0.00 MB or -0.00 GB">-1</abbr></td><td class="s2-r-bg"><abbr title="-0.00 MB or -0.00 GB">-1</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The amount of disk space consumed by replication slot files.">Storage used by replication slots</abbr></td><td>KB</td><td><abbr title="0.00 MB or 0.00 GB">-0.00</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">-0.00</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The amount of disk space consumed by replication slot files.">Storage used by manual snapshots</abbr></td><td>KB</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+       </table>
+
+
+OUTPUT:
+Summary of important differences in metrics:
+
+1. Average estimated buffer pool memory used: Increased significantly from 1.83 GB to 162.50 GB (88.8x or 8782% increase). This substantial increase in buffer pool memory usage could indicate higher memory requirements for queries or data operations during the second snapshot period.
+
+2. Max estimated buffer pool memory used: Also increased substantially from 10.38 GB to 313.88 GB (30.3x or 2925% increase). This metric aligns with the increase in average buffer pool memory usage, suggesting that the database required significantly more memory during the second snapshot period.
+
+3. Pct disk reads: Increased from 1.26% to 76.02% (60.3x or 5933% increase). This substantial increase in disk reads could indicate a higher number of full table scans or inefficient query plans during the second snapshot period, potentially impacting overall performance.
+
+4. Tuples returned to fetched: Increased from 3 to 525 (175x or 17400% increase). This significant increase in the ratio of tuples returned to fetched could suggest a higher number of full or range scans, or a high count of dead tuples, which may impact query performance.
+
+5. Estimated network throughput max and average: Both metrics increased substantially, with the max increasing from 262.97 MB/s to 1243.29 MB/s (4.7x or 373% increase), and the average increasing from 25.55 MB/s to 694.04 MB/s (27.2x or 2616% increase). These increases could indicate higher network traffic during the second snapshot period, potentially due to increased data transfer or replication activities.
+
+6. Pct network traffic to max limit and Pct network traffic to estimated baseline: Both metrics increased significantly, with the former increasing from 21.04% to 99.46% (4.7x or 373% increase), and the latter increasing from 42.08% to 198.93% (4.7x or 373% increase). These increases suggest that the network traffic approached or exceeded the maximum limits and estimated baselines during the second snapshot period.
+
+7. Max local storage throughput and Avg local storage throughput: Both metrics increased substantially, with the max increasing from 24.52 MB/s to 182.76 MB/s (7.5x or 645% increase), and the average increasing from 1.21 MB/s to 69.91 MB/s (57.8x or 5678% increase). These increases could indicate higher storage I/O activity during the second snapshot period.
+
+8. Pct max local storage throughput to max EBS throughput: Increased from 4.13% to 30.78% (7.5x or 645% increase), suggesting that the local storage throughput approached or exceeded the maximum EBS throughput during the second snapshot period.
+
+9. Pct active sessions to connections: Decreased from 21.42% to 5.46% (3.9x or 292% decrease). This decrease could indicate a lower number of active sessions relative to the total connections during the second snapshot period.
+
+10. Pct max backends to max_connections: Increased from 0.34% to 3.42% (10.1x or 906% increase), suggesting that the maximum number of connections approached or exceeded the max_connections limit during the second snapshot period.
+
+Please note that if you require any clarification or additional information about specific metrics or statistics, feel free to ask for further details.
+
+
+
+
+
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+Metric Definitions and Context:
+
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+<table class="no-shadow">
+           <caption>CPU Utilization</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The percentage of CPU unused while waiting for I/O access">os.cpuUtilization.wait</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">0.01</abbr></td><td class="s2-r-bg"><abbr title="Percent">16.01</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>16 [1601x|160000%]</td><td><abbr title="Percent">0.2</abbr></td><td class="s2-r-bg"><abbr title="Percent">44</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>43.8 [220x|21900%]</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The total percentage of the CPU in use. This value includes the nice value">os.cpuUtilization.total</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">6.16</abbr></td><td class="s2-r-bg"><abbr title="Percent">43.02</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>36.86 [7x|598%]</td><td><abbr title="Percent">44.4</abbr></td><td class="s2-r-bg"><abbr title="Percent">77.5</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>33.1 [1.7x|75%]</td><td><abbr title="Percent">0.7</abbr></td><td class="s2-r-bg"><abbr title="Percent">1</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.3 [1.4x|43%]</td></tr>
+<tr><td><abbr title="The percentage of CPU in use by programs running at lowest priority">os.cpuUtilization.nice</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">1.17</abbr></td><td class="s2-r-bg"><abbr title="Percent">7.16</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>5.99 [6.1x|512%]</td><td><abbr title="Percent">12</abbr></td><td class="s2-r-bg"><abbr title="Percent">22.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>10.6 [1.9x|88%]</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The percentage of CPU in use by software interrupts">os.cpuUtilization.irq</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">0.35</abbr></td><td class="s2-r-bg"><abbr title="Percent">1.86</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1.51 [5.3x|431%]</td><td><abbr title="Percent">3.4</abbr></td><td class="s2-r-bg"><abbr title="Percent">4.8</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1.4 [1.4x|41%]</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The percentage of CPU in use by the kernel">os.cpuUtilization.system</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">1.53</abbr></td><td class="s2-r-bg"><abbr title="Percent">5.97</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>4.44 [3.9x|290%]</td><td><abbr title="Percent">10.2</abbr></td><td class="s2-r-bg"><abbr title="Percent">11.8</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1.6 [1.2x|16%]</td><td><abbr title="Percent">0.3</abbr></td><td class="s2-r-bg"><abbr title="Percent">0.3</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The percentage of CPU in use by user programs">os.cpuUtilization.user</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">3.1</abbr></td><td class="s2-r-bg"><abbr title="Percent">12.02</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>8.92 [3.9x|288%]</td><td><abbr title="Percent">22</abbr></td><td class="s2-r-bg"><abbr title="Percent">29</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>7 [1.3x|32%]</td><td><abbr title="Percent">0.4</abbr></td><td class="s2-r-bg"><abbr title="Percent">0.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.2 [1.5x|50%]</td></tr>
+<tr><td><abbr title="The percentage of CPU that is idle">os.cpuUtilization.idle</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">93.83</abbr></td><td class="s2-r-bg"><abbr title="Percent">56.99</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>36.84 [1.6x|65%]</td><td><abbr title="Percent">99.2</abbr></td><td class="s2-r-bg"><abbr title="Percent">99</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>0.2 [1x|0%]</td><td><abbr title="Percent">55.5</abbr></td><td class="s2-r-bg"><abbr title="Percent">22.5</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>33 [2.5x|147%]</td></tr>
+<tr><td><abbr title="The percentage of CPU in use by guest programs">os.cpuUtilization.guest</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Percent">5e-324</abbr></td><td class="s2-r-bg"><abbr title="Percent">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The percentage of CPU in use by other virtual machines">os.cpuUtilization.steal</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Percent">5e-324</abbr></td><td class="s2-r-bg"><abbr title="Percent">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+        </table>
+
+
+OUTPUT:
+Based on the provided table, the following are the important differences in metrics that could potentially affect the overall performance or troubleshooting of the database:
+
+1. **os.cpuUtilization.wait**:
+   - The average value increased significantly from 0.01% to 16.01% (160000% increase).
+   - The maximum value increased from 0.2% to 44% (21900% increase).
+   - A high value for this metric indicates that the CPU is spending more time waiting for I/O operations, which could suggest potential I/O bottlenecks or inefficient queries.
+
+2. **os.cpuUtilization.total**:
+   - The average value increased from 6.16% to 43.02% (598% increase).
+   - The maximum value increased from 44.4% to 77.5% (75% increase).
+   - An increase in total CPU utilization could indicate higher workload or resource contention, potentially leading to performance degradation.
+
+3. **os.cpuUtilization.nice**:
+   - The average value increased from 1.17% to 7.16% (512% increase).
+   - The maximum value increased from 12% to 22.6% (88% increase).
+   - An increase in this metric suggests that more CPU time is being consumed by low-priority processes, which could potentially impact the performance of higher-priority processes.
+
+4. **os.cpuUtilization.irq**:
+   - The average value increased from 0.35% to 1.86% (431% increase).
+   - The maximum value increased from 3.4% to 4.8% (41% increase).
+   - An increase in this metric could indicate higher interrupt handling overhead, which could be caused by hardware issues or inefficient device drivers.
+
+5. **os.cpuUtilization.system**:
+   - The average value increased from 1.53% to 5.97% (290% increase).
+   - The maximum value increased from 10.2% to 11.8% (16% increase).
+   - An increase in this metric suggests that more CPU time is being consumed by kernel-level operations, which could be related to system calls, context switches, or other kernel-level activities.
+
+6. **os.cpuUtilization.user**:
+   - The average value increased from 3.1% to 12.02% (288% increase).
+   - The maximum value increased from 22% to 29% (32% increase).
+   - An increase in this metric indicates that more CPU time is being consumed by user-level processes, which could be related to application workload or inefficient code.
+
+7. **os.cpuUtilization.idle**:
+   - The average value decreased from 93.83% to 56.99% (65% decrease).
+   - The minimum value decreased from 55.5% to 22.5% (147% decrease).
+   - A decrease in idle CPU time suggests that the system is experiencing higher overall CPU utilization, which could lead to potential performance issues or resource contention.
+
+These differences in CPU utilization metrics could provide valuable insights into the overall system performance and potential bottlenecks or issues that may require further investigation or troubleshooting.
+
+
+
+
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+Metric Definitions and Context:
+
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+
+<table class="no-shadow">
+           <caption>Disk IO</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The number of bytes received for aurora storage per second">os.diskIO.auroraStorage.auroraStorageBytesRx</abbr></td><td>Bytes</td><td><abbr title="1588981.70 KB or 1551.74 MB">1627117256</abbr></td><td class="s2-r-bg"><abbr title="253592071.12 KB or 247648.51 MB">259678280826</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>258051163570 [159.6x|15859%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="The total number of kilobytes read">os.diskIO.rdstemp.readKb</abbr></td><td>KB</td><td><abbr title="0.73 MB or 0.00 GB">748</abbr></td><td class="s2-r-bg"><abbr title="62.89 MB or 0.06 GB">64400</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>63652 [86.1x|8510%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="The total number of kilobytes written">os.diskIO.rdstemp.writeKb</abbr></td><td>Per Second</td><td><abbr title="Per Second">4457088</abbr></td><td class="s2-r-bg"><abbr title="Per Second">257629256</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>253172168 [57.8x|5680%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="The number of bytes uploaded for aurora storage per second">os.diskIO.auroraStorage.auroraStorageBytesTx</abbr></td><td>Bytes</td><td><abbr title="6142785.37 KB or 5998.81 MB">6290212221</abbr></td><td class="s2-r-bg"><abbr title="3560790.77 KB or 3477.33 MB">3646249746</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>2643962475 [1.7x|73%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="The number of requests waiting in the I/O device's queue">os.diskIO.rdstemp.avgQueueLen</abbr></td><td>Requests</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Requests">0.03</abbr></td><td class="s2-r-bg"><abbr title="Requests">49.29</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>49.26 [1643x|164200%]</td><td><abbr title="Requests">0.52</abbr></td><td class="s2-r-bg"><abbr title="Requests">105.43</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>104.91 [202.8x|20175%]</td><td><abbr title="Requests">0</abbr></td><td class="s2-r-bg"><abbr title="Requests">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of write operations per second">os.diskIO.rdstemp.writeIOsPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">16.17</abbr></td><td class="s2-r-bg"><abbr title="Per Second">4805.48</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>4789.31 [297.2x|29618%]</td><td><abbr title="Per Second">42.8</abbr></td><td class="s2-r-bg"><abbr title="Per Second">11077.4</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>11034.6 [258.8x|25782%]</td><td><abbr title="Per Second">9.5</abbr></td><td class="s2-r-bg"><abbr title="Per Second">11.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>2.1 [1.2x|22%]</td></tr>
+<tr><td><abbr title="The number of I/O transactions per second">os.diskIO.rdstemp.tps</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">16.23</abbr></td><td class="s2-r-bg"><abbr title="Per Second">4809.48</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>4793.25 [296.3x|29533%]</td><td><abbr title="Per Second">42.8</abbr></td><td class="s2-r-bg"><abbr title="Per Second">11077.4</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>11034.6 [258.8x|25782%]</td><td><abbr title="Per Second">9.5</abbr></td><td class="s2-r-bg"><abbr title="Per Second">11.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>2.1 [1.2x|22%]</td></tr>
+<tr><td><abbr title="The readThroughput of aurora storage per second">os.diskIO.auroraStorage.readThroughput</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="2924.08 KB or 2.86 MB">2994257.92</abbr></td><td class="s2-r-bg"><abbr title="689545.15 KB or 673.38 MB">706094238.7</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>703099980.78 [235.8x|23482%]</td><td><abbr title="162380.80 KB or 158.57 MB">166277936</abbr></td><td class="s2-r-bg"><abbr title="1191052.00 KB or 1163.14 MB">1219637248</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1053359312 [7.3x|633%]</td><td><abbr title="0.00 KB or 0.00 MB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 KB or 0.00 MB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of read operations per second">os.diskIO.auroraStorage.readIOsPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">365.51</abbr></td><td class="s2-r-bg"><abbr title="Per Second">86193.14</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>85827.63 [235.8x|23482%]</td><td><abbr title="Per Second">20297.6</abbr></td><td class="s2-r-bg"><abbr title="Per Second">148881.5</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>128583.9 [7.3x|633%]</td><td><abbr title="Per Second">0</abbr></td><td class="s2-r-bg"><abbr title="Per Second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The percentage of CPU time during which requests were issued">os.diskIO.rdstemp.util</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">0.43</abbr></td><td class="s2-r-bg"><abbr title="Percent">64.35</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>63.92 [149.7x|14865%]</td><td><abbr title="Percent">5.1</abbr></td><td class="s2-r-bg"><abbr title="Percent">100</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>94.9 [19.6x|1861%]</td><td><abbr title="Percent">0</abbr></td><td class="s2-r-bg"><abbr title="Percent">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of kilobytes read per second">os.diskIO.rdstemp.readKbPS</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="0.00 MB or 0.00 GB">0.23</abbr></td><td class="s2-r-bg"><abbr title="0.02 MB or 0.00 GB">17.91</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>17.68 [77.9x|7687%]</td><td><abbr title="0.01 MB or 0.00 GB">6.8</abbr></td><td class="s2-r-bg"><abbr title="0.52 MB or 0.00 GB">533.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>526.8 [78.5x|7747%]</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of read operations per second">os.diskIO.rdstemp.readIOsPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">0.06</abbr></td><td class="s2-r-bg"><abbr title="Per Second">4</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3.94 [66.7x|6567%]</td><td><abbr title="Per Second">1.7</abbr></td><td class="s2-r-bg"><abbr title="Per Second">44.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>42.9 [26.2x|2524%]</td><td><abbr title="Per Second">0</abbr></td><td class="s2-r-bg"><abbr title="Per Second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of kilobytes written per second">os.diskIO.rdstemp.writeKbPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">1241.56</abbr></td><td class="s2-r-bg"><abbr title="Per Second">71566.58</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>70325.02 [57.6x|5664%]</td><td><abbr title="Per Second">25104.4</abbr></td><td class="s2-r-bg"><abbr title="Per Second">186617.59</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>161513.19 [7.4x|643%]</td><td><abbr title="Per Second">167.6</abbr></td><td class="s2-r-bg"><abbr title="Per Second">170.8</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3.2 [1x|2%]</td></tr>
+<tr><td><abbr title="The read latency of aurora storage in milliseconds">os.diskIO.auroraStorage.readLatency</abbr></td><td>Milliseconds</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds">0.11</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">4.09</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3.98 [37.2x|3618%]</td><td><abbr title="Milliseconds">1.89</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">9.09</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>7.2 [4.8x|381%]</td><td><abbr title="Milliseconds">0</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of milliseconds required to respond to requests including queue time and service time">os.diskIO.rdstemp.await</abbr></td><td>Milliseconds</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds">1.07</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">7.69</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>6.62 [7.2x|619%]</td><td><abbr title="Milliseconds">12.36</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">13.92</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1.56 [1.1x|13%]</td><td><abbr title="Milliseconds">0</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The write latency of aurora storage in milliseconds">os.diskIO.auroraStorage.writeLatency</abbr></td><td>Milliseconds</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds">0.62</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">1.81</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1.19 [2.9x|192%]</td><td><abbr title="Milliseconds">0.83</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">19.14</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>18.31 [23.1x|2206%]</td><td><abbr title="Milliseconds">0.1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">0.15</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.05 [1.5x|50%]</td></tr>
+<tr><td><abbr title="The number of write operations per second">os.diskIO.auroraStorage.writeIOsPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">9243.18</abbr></td><td class="s2-r-bg"><abbr title="Per Second">3821.98</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>5421.2 [2.4x|142%]</td><td><abbr title="Per Second">105985.6</abbr></td><td class="s2-r-bg"><abbr title="Per Second">80623.5</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>25362.1 [1.3x|31%]</td><td><abbr title="Per Second">5.6</abbr></td><td class="s2-r-bg"><abbr title="Per Second">5.6</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The writeThroughput of aurora storage per second">os.diskIO.auroraStorage.writeThroughput</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="2319.06 KB or 2.26 MB">2374720.8</abbr></td><td class="s2-r-bg"><abbr title="961.65 KB or 0.94 MB">984726.77</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>1389994.03 [2.4x|141%]</td><td><abbr title="33804.02 KB or 33.01 MB">34615312</abbr></td><td class="s2-r-bg"><abbr title="20022.42 KB or 19.55 MB">20502960</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>14112352 [1.7x|69%]</td><td><abbr title="1.17 KB or 0.00 MB">1197.5</abbr></td><td class="s2-r-bg"><abbr title="1.16 KB or 0.00 MB">1187.9</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>9.6 [1x|1%]</td></tr>
+<tr><td><abbr title="The average request size in kilobytes">os.diskIO.rdstemp.avgReqSz</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="0.08 MB or 0.00 GB">77.07</abbr></td><td class="s2-r-bg"><abbr title="0.04 MB or 0.00 GB">42.05</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>35.02 [1.8x|83%]</td><td><abbr title="1.25 MB or 0.00 GB">1279.73</abbr></td><td class="s2-r-bg"><abbr title="1.19 MB or 0.00 GB">1214.7</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>65.03 [1.1x|5%]</td><td><abbr title="0.02 MB or 0.00 GB">20.97</abbr></td><td class="s2-r-bg"><abbr title="0.02 MB or 0.00 GB">17.94</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>3.03 [1.2x|17%]</td></tr>
+<tr><td><abbr title="The length of aurora storage disk queue">os.diskIO.auroraStorage.diskQueueDepth</abbr></td><td>Size</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Size">1.07</abbr></td><td class="s2-r-bg"><abbr title="Size">1.89</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.82 [1.8x|77%]</td><td><abbr title="Size">22</abbr></td><td class="s2-r-bg"><abbr title="Size">51</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>29 [2.3x|132%]</td><td><abbr title="Size">0</abbr></td><td class="s2-r-bg"><abbr title="Size">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of merged read requests queued per second">os.diskIO.rdstemp.rrqmPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">0</abbr></td><td class="s2-r-bg"><abbr title="Per Second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Per Second">5e-324</abbr></td><td class="s2-r-bg"><abbr title="Per Second">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Per Second">0</abbr></td><td class="s2-r-bg"><abbr title="Per Second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of merged write requests queued per second">os.diskIO.rdstemp.wrqmPS</abbr></td><td>Per Second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Per Second">0</abbr></td><td class="s2-r-bg"><abbr title="Per Second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Per Second">5e-324</abbr></td><td class="s2-r-bg"><abbr title="Per Second">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Per Second">0</abbr></td><td class="s2-r-bg"><abbr title="Per Second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>File system</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The number of files in the file system">os.fileSys.usedFiles</abbr></td><td>Files</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Files">3142.29</abbr></td><td class="s2-r-bg"><abbr title="Files">92461.72</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>89319.43 [29.4x|2842%]</td><td><abbr title="Files">3149</abbr></td><td class="s2-r-bg"><abbr title="Files">130512</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>127363 [41.4x|4045%]</td><td><abbr title="Files">3138</abbr></td><td class="s2-r-bg"><abbr title="Files">3147</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>9 [1x|0%]</td></tr>
+<tr><td><abbr title="The percentage of available files in use">os.fileSys.usedFilePercent</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">0.02</abbr></td><td class="s2-r-bg"><abbr title="Percent">0.55</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.53 [27.5x|2650%]</td><td><abbr title="Percent">0.02</abbr></td><td class="s2-r-bg"><abbr title="Percent">0.78</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.76 [39x|3800%]</td><td><abbr title="Percent">0.02</abbr></td><td class="s2-r-bg"><abbr title="Percent">0.02</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The percentage of the file-system disk space in use">os.fileSys.usedPercent</abbr></td><td>Percent</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Percent">2.19</abbr></td><td class="s2-r-bg"><abbr title="Percent">28.45</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>26.26 [13x|1199%]</td><td><abbr title="Percent">2.3</abbr></td><td class="s2-r-bg"><abbr title="Percent">79.89</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>77.59 [34.7x|3373%]</td><td><abbr title="Percent">2.18</abbr></td><td class="s2-r-bg"><abbr title="Percent">2.18</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The amount of disk space used by files in the file system in kilobytes">os.fileSys.used</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="5659.78 MB or 5.53 GB">5795619.41</abbr></td><td class="s2-r-bg"><abbr title="73348.09 MB or 71.63 GB">75108444.16</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>69312824.75 [13x|1196%]</td><td><abbr title="5937.61 MB or 5.80 GB">6080112</abbr></td><td class="s2-r-bg"><abbr title="205987.96 MB or 201.16 GB">210931668</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>204851556 [34.7x|3369%]</td><td><abbr title="5632.87 MB or 5.50 GB">5768060</abbr></td><td class="s2-r-bg"><abbr title="5610.04 MB or 5.48 GB">5744684</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>23376 [1x|0%]</td></tr>
+<tr><td><abbr title="The total number of disk space available for the file system in kilobytes">os.fileSys.total</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="257838.07 MB or 251.79 GB">264026180</abbr></td><td class="s2-r-bg"><abbr title="257838.07 MB or 251.79 GB">264026180</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="257838.07 MB or 251.79 GB">264026180</abbr></td><td class="s2-r-bg"><abbr title="257838.07 MB or 251.79 GB">264026180</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="257838.07 MB or 251.79 GB">264026180</abbr></td><td class="s2-r-bg"><abbr title="257838.07 MB or 251.79 GB">264026180</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>Average load per intervals</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The number of processes requesting CPU time over the last minute">os.loadAverageMinute.one</abbr></td><td>Processes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Processes">1.11</abbr></td><td class="s2-r-bg"><abbr title="Processes">9.17</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>8.06 [8.3x|726%]</td><td><abbr title="Processes">8.19</abbr></td><td class="s2-r-bg"><abbr title="Processes">16.62</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>8.43 [2x|103%]</td><td><abbr title="Processes">0</abbr></td><td class="s2-r-bg"><abbr title="Processes">0.06</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.06 [0.1x|100%]</td></tr>
+<tr><td><abbr title="The number of processes requesting CPU time over the last 5 minutes">os.loadAverageMinute.five</abbr></td><td>Processes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Processes">1.11</abbr></td><td class="s2-r-bg"><abbr title="Processes">8.4</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>7.29 [7.6x|657%]</td><td><abbr title="Processes">5.6</abbr></td><td class="s2-r-bg"><abbr title="Processes">14.57</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>8.97 [2.6x|160%]</td><td><abbr title="Processes">0.1</abbr></td><td class="s2-r-bg"><abbr title="Processes">0.2</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>0.1 [2x|100%]</td></tr>
+<tr><td><abbr title="The number of processes requesting CPU time over the last 15 minutes">os.loadAverageMinute.fifteen</abbr></td><td>Processes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Processes">1.08</abbr></td><td class="s2-r-bg"><abbr title="Processes">6.42</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>5.34 [5.9x|494%]</td><td><abbr title="Processes">2.85</abbr></td><td class="s2-r-bg"><abbr title="Processes">12.02</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>9.17 [4.2x|322%]</td><td><abbr title="Processes">0.33</abbr></td><td class="s2-r-bg"><abbr title="Processes">0.25</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>0.08 [1.3x|32%]</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>Memory</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The amount of dirty pages in RAM that are still being written to the backing storage in kilobytes">os.memory.writeback</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="0.02 MB or 0.00 GB">15.73</abbr></td><td class="s2-r-bg"><abbr title="0.63 MB or 0.00 GB">640.89</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>625.16 [40.7x|3974%]</td><td><abbr title="0.30 MB or 0.00 GB">312</abbr></td><td class="s2-r-bg"><abbr title="8.57 MB or 0.01 GB">8776</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>8464 [28.1x|2713%]</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The amount of memory pages in RAM that have been modified but not written to their related data block in storage in kilobytes">os.memory.dirty</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="3.10 MB or 0.00 GB">3169.84</abbr></td><td class="s2-r-bg"><abbr title="116.27 MB or 0.11 GB">119063.48</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>115893.64 [37.6x|3656%]</td><td><abbr title="35.86 MB or 0.04 GB">36720</abbr></td><td class="s2-r-bg"><abbr title="221.18 MB or 0.22 GB">226488</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>189768 [6.2x|517%]</td><td><abbr title="0.18 MB or 0.00 GB">184</abbr></td><td class="s2-r-bg"><abbr title="0.16 MB or 0.00 GB">168</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>16 [1.1x|10%]</td></tr>
+<tr><td><abbr title="The amount of memory used for anonymous and swap cache by database process not including tmpfs (shmem) in bytes">os.memory.db.residentSetSize</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="546133.19 KB or 533.33 MB">559240385.42</abbr></td><td class="s2-r-bg"><abbr title="3976812.59 KB or 3883.61 MB">4072256091.02</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3513015705.6 [7.3x|628%]</td><td><abbr title="916372.00 KB or 894.89 MB">938364928</abbr></td><td class="s2-r-bg"><abbr title="6556540.00 KB or 6402.87 MB">6713896960</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>5775532032 [7.2x|615%]</td><td><abbr title="497560.00 KB or 485.90 MB">509501440</abbr></td><td class="s2-r-bg"><abbr title="512984.00 KB or 500.96 MB">525295616</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>15794176 [1x|3%]</td></tr>
+<tr><td><abbr title="The amount of memory used for page cache by database process including tmpfs (shmem) in bytes">os.memory.db.cache</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="4804345.69 KB or 4691.74 MB">4919649985.42</abbr></td><td class="s2-r-bg"><abbr title="22167236.17 KB or 21647.69 MB">22699249834.67</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>17779599849.25 [4.6x|361%]</td><td><abbr title="5089004.00 KB or 4969.73 MB">5211140096</abbr></td><td class="s2-r-bg"><abbr title="30986304.00 KB or 30260.06 MB">31729975296</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>26518835200 [6.1x|509%]</td><td><abbr title="4776440.00 KB or 4664.49 MB">4891074560</abbr></td><td class="s2-r-bg"><abbr title="4827964.00 KB or 4714.81 MB">4943835136</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>52760576 [1x|1%]</td></tr>
+<tr><td><abbr title="The amount of least-frequently used memory pages in kilobytes">os.memory.inactive</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="5083.71 MB or 4.96 GB">5205715.74</abbr></td><td class="s2-r-bg"><abbr title="21829.43 MB or 21.32 GB">22353337.79</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>17147622.05 [4.3x|329%]</td><td><abbr title="5379.92 MB or 5.25 GB">5509040</abbr></td><td class="s2-r-bg"><abbr title="30306.82 MB or 29.60 GB">31034188</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>25525148 [5.6x|463%]</td><td><abbr title="5020.40 MB or 4.90 GB">5140892</abbr></td><td class="s2-r-bg"><abbr title="5045.27 MB or 4.93 GB">5166352</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>25460 [1x|0%]</td></tr>
+<tr><td><abbr title="The amount of memory used for caching file system–based I/O">os.memory.cached</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="6340.07 MB or 6.19 GB">6492227.47</abbr></td><td class="s2-r-bg"><abbr title="22458.01 MB or 21.93 GB">22997003.78</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>16504776.31 [3.5x|254%]</td><td><abbr title="6674.91 MB or 6.52 GB">6835112</abbr></td><td class="s2-r-bg"><abbr title="30646.50 MB or 29.93 GB">31382012</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>24546900 [4.6x|359%]</td><td><abbr title="6267.60 MB or 6.12 GB">6418024</abbr></td><td class="s2-r-bg"><abbr title="6318.46 MB or 6.17 GB">6470100</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>52076 [1x|1%]</td></tr>
+<tr><td><abbr title="The amount of unassigned memory in kilobytes">os.memory.free</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="30561.83 MB or 29.85 GB">31295318.36</abbr></td><td class="s2-r-bg"><abbr title="10293.68 MB or 10.05 GB">10540726.36</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>20754592 [3x|197%]</td><td><abbr title="30681.70 MB or 29.96 GB">31418056</abbr></td><td class="s2-r-bg"><abbr title="30577.09 MB or 29.86 GB">31310944</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>107112 [1x|0%]</td><td><abbr title="30089.07 MB or 29.38 GB">30811212</abbr></td><td class="s2-r-bg"><abbr title="1186.07 MB or 1.16 GB">1214536</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>29596676 [25.4x|2437%]</td></tr>
+<tr><td><abbr title="The amount of memory used by page tables in kilobytes">os.memory.pageTables</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="22.67 MB or 0.02 GB">23216.64</abbr></td><td class="s2-r-bg"><abbr title="56.93 MB or 0.06 GB">58291.87</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>35075.23 [2.5x|151%]</td><td><abbr title="39.29 MB or 0.04 GB">40236</abbr></td><td class="s2-r-bg"><abbr title="64.81 MB or 0.06 GB">66368</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>26132 [1.6x|65%]</td><td><abbr title="20.60 MB or 0.02 GB">21096</abbr></td><td class="s2-r-bg"><abbr title="20.63 MB or 0.02 GB">21128</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>32 [1x|0%]</td></tr>
+<tr><td><abbr title="The amount of assigned memory in kilobytes">os.memory.active</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="2635.58 MB or 2.57 GB">2698834.73</abbr></td><td class="s2-r-bg"><abbr title="5530.76 MB or 5.40 GB">5663501.26</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>2964666.53 [2.1x|110%]</td><td><abbr title="3003.61 MB or 2.93 GB">3075696</abbr></td><td class="s2-r-bg"><abbr title="8032.94 MB or 7.84 GB">8225728</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>5150032 [2.7x|167%]</td><td><abbr title="2545.74 MB or 2.49 GB">2606836</abbr></td><td class="s2-r-bg"><abbr title="2614.72 MB or 2.55 GB">2677476</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>70640 [1x|3%]</td></tr>
+<tr><td><abbr title="The amount of memory used for buffering I/O requests prior to writing to the storage device in kilobytes">os.memory.buffers</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="210.19 MB or 0.21 GB">215231.28</abbr></td><td class="s2-r-bg"><abbr title="386.66 MB or 0.38 GB">395935.76</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>180704.48 [1.8x|84%]</td><td><abbr title="210.19 MB or 0.21 GB">215232</abbr></td><td class="s2-r-bg"><abbr title="661.80 MB or 0.65 GB">677688</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>462456 [3.1x|215%]</td><td><abbr title="210.18 MB or 0.21 GB">215228</abbr></td><td class="s2-r-bg"><abbr title="210.28 MB or 0.21 GB">215328</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>100 [1x|0%]</td></tr>
+<tr><td><abbr title="The amount of reusable kernel data structures in kilobytes">os.memory.slab</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="729.48 MB or 0.71 GB">746990.73</abbr></td><td class="s2-r-bg"><abbr title="1305.51 MB or 1.27 GB">1336837.78</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>589847.05 [1.8x|79%]</td><td><abbr title="735.95 MB or 0.72 GB">753608</abbr></td><td class="s2-r-bg"><abbr title="1665.66 MB or 1.63 GB">1705632</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>952024 [2.3x|126%]</td><td><abbr title="726.40 MB or 0.71 GB">743832</abbr></td><td class="s2-r-bg"><abbr title="773.96 MB or 0.76 GB">792536</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>48704 [1.1x|7%]</td></tr>
+<tr><td><abbr title="The amount of memory used for swap by database process in bytes">os.memory.db.swap</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="243958.73 KB or 238.24 MB">249813742.93</abbr></td><td class="s2-r-bg"><abbr title="232243.37 KB or 226.80 MB">237817207.47</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>11996535.46 [1.1x|5%]</td><td><abbr title="245652.00 KB or 239.89 MB">251547648</abbr></td><td class="s2-r-bg"><abbr title="233112.00 KB or 227.65 MB">238706688</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>12840960 [1.1x|5%]</td><td><abbr title="243804.00 KB or 238.09 MB">249655296</abbr></td><td class="s2-r-bg"><abbr title="231924.00 KB or 226.49 MB">237490176</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>12165120 [1.1x|5%]</td></tr>
+<tr><td><abbr title="The total amount of file-system contents that is memory mapped inside a process address space in kilobytes">os.memory.mapped</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="1044.35 MB or 1.02 GB">1069418.52</abbr></td><td class="s2-r-bg"><abbr title="1083.10 MB or 1.06 GB">1109090.22</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>39671.7 [1x|4%]</td><td><abbr title="1085.66 MB or 1.06 GB">1111716</abbr></td><td class="s2-r-bg"><abbr title="1139.04 MB or 1.11 GB">1166372</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>54656 [1x|5%]</td><td><abbr title="1022.86 MB or 1.00 GB">1047408</abbr></td><td class="s2-r-bg"><abbr title="1021.69 MB or 1.00 GB">1046212</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>1196 [1x|0%]</td></tr>
+<tr><td><abbr title="The number of free huge pages. Huge pages are a feature of the Linux kernel">os.memory.hugePagesFree</abbr></td><td>Pages</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Pages">131</abbr></td><td class="s2-r-bg"><abbr title="Pages">131</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Pages">131</abbr></td><td class="s2-r-bg"><abbr title="Pages">131</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Pages">131</abbr></td><td class="s2-r-bg"><abbr title="Pages">131</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of committed huge pages">os.memory.hugePagesRsvd</abbr></td><td>Pages</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Pages">82</abbr></td><td class="s2-r-bg"><abbr title="Pages">82</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Pages">82</abbr></td><td class="s2-r-bg"><abbr title="Pages">82</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Pages">82</abbr></td><td class="s2-r-bg"><abbr title="Pages">82</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of available surplus huge pages over the total">os.memory.hugePagesSurp</abbr></td><td>Pages</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="The total number of huge pages for the system">os.memory.hugePagesTotal</abbr></td><td>Pages</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Pages">44195</abbr></td><td class="s2-r-bg"><abbr title="Pages">44195</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Pages">44195</abbr></td><td class="s2-r-bg"><abbr title="Pages">44195</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Pages">44195</abbr></td><td class="s2-r-bg"><abbr title="Pages">44195</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of OOM kills that happened over the last collection interval">os.memory.outOfMemoryKillCount</abbr></td><td>Count</td><td><abbr title="Count">0</abbr></td><td class="s2-r-bg"><abbr title="Count">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+OUTPUT:
+Based on the provided table, here is a summary of the important differences in metrics that could potentially affect the overall performance, behavior, or troubleshooting of the database:
+
+1. **Disk I/O**:
+   - `os.diskIO.auroraStorage.auroraStorageBytesRx` (bytes received for Aurora storage) increased significantly by 159.6 times, indicating a substantial increase in data being read from storage.
+   - `os.diskIO.rdstemp.readKb` (total kilobytes read) increased by 86.1 times, suggesting a significant increase in read operations.
+   - `os.diskIO.rdstemp.writeKb` (total kilobytes written) increased by 57.8 times, indicating a substantial increase in write operations.
+   - `os.diskIO.rdstemp.avgQueueLen` (average I/O device queue length) increased by 1643 times, suggesting potential I/O bottlenecks or contention.
+   - `os.diskIO.rdstemp.writeIOsPS` (write operations per second) increased by 297.2 times, indicating a significant increase in write workload.
+   - `os.diskIO.rdstemp.tps` (I/O transactions per second) increased by 296.3 times, suggesting a substantial increase in overall I/O activity.
+   - `os.diskIO.rdstemp.util` (percentage of CPU time spent on I/O requests) increased by 149.7 times, indicating potential I/O bottlenecks or contention.
+
+2. **File System**:
+   - `os.fileSys.usedFiles` (number of files in use) increased by 29.4 times, suggesting a significant increase in the number of open files or file-based operations.
+   - `os.fileSys.usedPercent` (percentage of file system disk space in use) increased by 13 times, indicating potential disk space issues or increased file-based workload.
+   - `os.fileSys.used` (disk space used by files) increased by 13 times, further confirming the increased file-based workload or data storage requirements.
+
+3. **Average Load**:
+   - `os.loadAverageMinute.one` (number of processes requesting CPU time over the last minute) increased by 8.3 times, suggesting a significant increase in CPU demand or workload.
+   - `os.loadAverageMinute.five` (number of processes requesting CPU time over the last 5 minutes) increased by 7.6 times, indicating a sustained increase in CPU demand or workload.
+   - `os.loadAverageMinute.fifteen` (number of processes requesting CPU time over the last 15 minutes) increased by 5.9 times, further confirming the increased CPU demand or workload over a longer period.
+
+4. **Memory**:
+   - `os.memory.db.residentSetSize` (memory used for anonymous and swap cache by the database process) increased by 7.3 times, suggesting a significant increase in memory usage by the database process.
+   - `os.memory.db.cache` (memory used for page cache by the database process) increased by 4.6 times, indicating an increase in memory usage for caching operations.
+   - `os.memory.inactive` (amount of least-frequently used memory pages) increased by 4.3 times, suggesting an increase in memory usage for infrequently accessed data.
+   - `os.memory.cached` (memory used for caching file system-based I/O) increased by 3.5 times, indicating an increase in memory usage for file system caching operations.
+   - `os.memory.active` (amount of assigned memory) increased by 2.1 times, suggesting an overall increase in memory usage.
+   - `os.memory.free` (amount of unassigned memory) decreased by 3 times, indicating a potential memory pressure or shortage.
+
+These significant differences in metrics related to disk I/O, file system usage, CPU load, and memory consumption could potentially impact the overall performance, behavior, and troubleshooting efforts of the database system. Further investigation and analysis may be required to identify the root causes and take appropriate actions to address any performance issues or bottlenecks.
+
+
+
+
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+Metric Definitions and Context:
+
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+<table class="no-shadow">
+           <caption>Network</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The number of bytes received per second">os.network.rx</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="25.64 KB or 0.03 MB">26257.9</abbr></td><td class="s2-r-bg"><abbr title="13.53 KB or 0.01 MB">13853.31</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>12404.59 [1.9x|90%]</td><td><abbr title="223.07 KB or 0.22 MB">228420.49</abbr></td><td class="s2-r-bg"><abbr title="197.08 KB or 0.19 MB">201808.71</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>26611.78 [1.1x|13%]</td><td><abbr title="2.31 KB or 0.00 MB">2361</abbr></td><td class="s2-r-bg"><abbr title="2.45 KB or 0.00 MB">2511.3</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>150.3 [1.1x|6%]</td></tr>
+<tr><td><abbr title="The number of bytes uploaded per second">os.network.tx</abbr></td><td>Bytes</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="60.78 KB or 0.06 MB">62235.82</abbr></td><td class="s2-r-bg"><abbr title="45.18 KB or 0.04 MB">46266.35</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>15969.47 [1.3x|35%]</td><td><abbr title="358.39 KB or 0.35 MB">366991.11</abbr></td><td class="s2-r-bg"><abbr title="305.14 KB or 0.30 MB">312465.8</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>54525.31 [1.2x|17%]</td><td><abbr title="10.13 KB or 0.01 MB">10372.7</abbr></td><td class="s2-r-bg"><abbr title="10.99 KB or 0.01 MB">11256.4</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>883.7 [1.1x|9%]</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>Swap</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The amount of swap memory in kilobytes used as cache memory">os.swap.cached</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="227.50 MB or 0.22 GB">232960.64</abbr></td><td class="s2-r-bg"><abbr title="187.67 MB or 0.18 GB">192170.97</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>40789.67 [1.2x|21%]</td><td><abbr title="233.45 MB or 0.23 GB">239048</abbr></td><td class="s2-r-bg"><abbr title="194.23 MB or 0.19 GB">198896</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>40152 [1.2x|20%]</td><td><abbr title="226.99 MB or 0.22 GB">232436</abbr></td><td class="s2-r-bg"><abbr title="176.63 MB or 0.17 GB">180872</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>51564 [1.3x|29%]</td></tr>
+<tr><td><abbr title="The total amount of swap memory free in kilobytes">os.swap.free</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="7823.91 MB or 7.64 GB">8011678.84</abbr></td><td class="s2-r-bg"><abbr title="7860.22 MB or 7.68 GB">8048864.27</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>37185.43 [1x|0%]</td><td><abbr title="7824.50 MB or 7.64 GB">8012284</abbr></td><td class="s2-r-bg"><abbr title="7861.50 MB or 7.68 GB">8050172</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>37888 [1x|0%]</td><td><abbr title="7817.50 MB or 7.63 GB">8005116</abbr></td><td class="s2-r-bg"><abbr title="7856.75 MB or 7.67 GB">8045308</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>40192 [1x|1%]</td></tr>
+<tr><td><abbr title="The total amount of memory in kilobytes swapped in from disk">os.swap.in</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="0.00 MB or 0.00 GB">1.6</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">5e-324</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>1.6 [Infinityx|Infinity%]</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The total amount of memory in kilobytes swapped out to disk">os.swap.out</abbr></td><td>KB</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="0.00 MB or 0.00 GB">5e-324</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="s2-r-bg"><abbr title="0.00 MB or 0.00 GB">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>OS tasks</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="The number of tasks that are running">os.tasks.running</abbr></td><td>Tasks</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Tasks">0.17</abbr></td><td class="s2-r-bg"><abbr title="Tasks">1.6</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1.43 [9.4x|841%]</td><td><abbr title="Tasks">7</abbr></td><td class="s2-r-bg"><abbr title="Tasks">13</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>6 [1.9x|86%]</td><td><abbr title="Tasks">0</abbr></td><td class="s2-r-bg"><abbr title="Tasks">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The total number of tasks">os.tasks.total</abbr></td><td>Tasks</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Tasks">232.92</abbr></td><td class="s2-r-bg"><abbr title="Tasks">365.18</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>132.26 [1.6x|57%]</td><td><abbr title="Tasks">329</abbr></td><td class="s2-r-bg"><abbr title="Tasks">401</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>72 [1.2x|22%]</td><td><abbr title="Tasks">229</abbr></td><td class="s2-r-bg"><abbr title="Tasks">230</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1 [1x|0%]</td></tr>
+<tr><td><abbr title="The number of tasks that are sleeping">os.tasks.sleeping</abbr></td><td>Tasks</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Tasks">232.74</abbr></td><td class="s2-r-bg"><abbr title="Tasks">363.59</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>130.85 [1.6x|56%]</td><td><abbr title="Tasks">329</abbr></td><td class="s2-r-bg"><abbr title="Tasks">401</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>72 [1.2x|22%]</td><td><abbr title="Tasks">229</abbr></td><td class="s2-r-bg"><abbr title="Tasks">230</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1 [1x|0%]</td></tr>
+<tr><td><abbr title="The number of tasks that are blocked">os.tasks.blocked</abbr></td><td>Tasks</td><td><abbr title="Tasks">0</abbr></td><td class="s2-r-bg"><abbr title="Tasks">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="The number of tasks that are stopped">os.tasks.stopped</abbr></td><td>Tasks</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Tasks">0</abbr></td><td class="s2-r-bg"><abbr title="Tasks">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Tasks">5e-324</abbr></td><td class="s2-r-bg"><abbr title="Tasks">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Tasks">0</abbr></td><td class="s2-r-bg"><abbr title="Tasks">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The number of child tasks that are inactive with an active parent task">os.tasks.zombie</abbr></td><td>Tasks</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Tasks">0</abbr></td><td class="s2-r-bg"><abbr title="Tasks">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Tasks">5e-324</abbr></td><td class="s2-r-bg"><abbr title="Tasks">5e-324</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Tasks">0</abbr></td><td class="s2-r-bg"><abbr title="Tasks">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+        </table>
+      </td></tr>
+  </table>
+
+
+
+OUTPUT:
+
+Summary of important differences in metrics:
+
+1. **os.network.rx (Bytes received per second)**: The average value decreased by around 90% (12404.59 bytes/sec) in the second snapshot, indicating a significant reduction in network data received. This could potentially impact applications or services that rely heavily on incoming network traffic.
+
+2. **os.network.tx (Bytes sent per second)**: The average value decreased by around 35% (15969.47 bytes/sec) in the second snapshot, suggesting a notable reduction in outgoing network traffic. This could affect applications or services that transmit data over the network.
+
+3. **os.swap.cached (Swap memory used as cache)**: The average value decreased by around 21% (40789.67 KB) in the second snapshot. This could indicate changes in memory usage patterns or potential memory pressure, which may impact performance if the system relies heavily on swap memory for caching.
+
+4. **os.tasks.running (Number of running tasks)**: The average value increased significantly by around 841% (1.43 tasks) in the second snapshot. This could suggest an increase in system load or more active processes, which may impact overall system performance if not managed properly.
+
+5. **os.tasks.total (Total number of tasks)**: The average value increased by around 57% (132.26 tasks) in the second snapshot, indicating a notable increase in the total number of tasks or processes running on the system.
+
+6. **os.tasks.sleeping (Number of sleeping tasks)**: The average value increased by around 56% (130.85 tasks) in the second snapshot, which could be related to the increase in total tasks and may not necessarily indicate a performance issue.
+
+Please note that without additional context or information about the specific use case or expected behavior, it is difficult to determine the exact impact of these metric differences on the overall system performance or troubleshooting efforts. Further investigation or analysis may be required to understand the root causes and potential implications.
+
+
+
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+Metric Definitions and Context:
+
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+<table class="no-shadow">
+           <caption>SQL</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of rows returned by queries in this instance">db.SQL.tup_returned</abbr></td><td>Tuples per second</td><td><abbr title="Tuples per second">52461576</abbr></td><td class="s2-r-bg"><abbr title="Tuples per second">6204128996</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>6151667420 [118.3x|11726%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Total time spent executing statements in milliseconds">db.SQL.total_query_time</abbr></td><td>Milliseconds</td><td><abbr title="Milliseconds">2795745.5609999895</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">8151677.40200001</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>5355931.84 [2.9x|192%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of rows deleted by queries in this instance">db.SQL.tup_deleted</abbr></td><td>Tuples per second</td><td><abbr title="Tuples per second">241403</abbr></td><td class="s2-r-bg"><abbr title="Tuples per second">99900</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>141503 [2.4x|142%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of rows updated by queries in this instance">db.SQL.tup_updated</abbr></td><td>Tuples per second</td><td><abbr title="Tuples per second">6258369</abbr></td><td class="s2-r-bg"><abbr title="Tuples per second">2624510</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>3633859 [2.4x|138%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of rows inserted by queries in this instance">db.SQL.tup_inserted</abbr></td><td>Tuples per second</td><td><abbr title="Tuples per second">3132576</abbr></td><td class="s2-r-bg"><abbr title="Tuples per second">1331658</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>1800918 [2.4x|135%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Total number of blocks read from both cache and disk">db.SQL.logical_reads</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">106381795</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">182274328</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>75892533 [1.7x|71%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of rows fetched by queries in this instance">db.SQL.tup_fetched</abbr></td><td>Tuples per second</td><td><abbr title="Tuples per second">20179737</abbr></td><td class="s2-r-bg"><abbr title="Tuples per second">11810914</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>8368823 [1.7x|71%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Total number of queries before executed">db.SQL.queries_started</abbr></td><td>Queries per second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Total number of queries after execution completed">db.SQL.queries_finished</abbr></td><td>Queries per second</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>Cache</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of times disk blocks were found already in the Aurora buffer cache so that a read was not necessary">db.Cache.blks_hit</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">105045908</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">43708113</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>61337795 [2.4x|140%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of buffers allocated">db.Cache.buffers_alloc</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">0</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+OUTPUT:
+
+Summary of important differences in metrics:
+
+1. `db.SQL.tup_returned`: The number of rows returned by queries increased significantly (118.3x or 11726%) in the second snapshot. This could indicate inefficient queries or a high number of full table scans, potentially impacting performance.
+
+2. `db.SQL.total_query_time`: The total time spent executing statements increased by 2.9x or 192% in the second snapshot, suggesting longer query execution times, which could be a performance concern.
+
+3. `db.SQL.tup_deleted`, `db.SQL.tup_updated`, and `db.SQL.tup_inserted`: The number of rows deleted, updated, and inserted decreased significantly (around 2.4x or 140%) in the second snapshot, indicating a potential change in workload or data manipulation patterns.
+
+4. `db.SQL.logical_reads`: The number of blocks read from both cache and disk increased by 1.7x or 71% in the second snapshot, which could be related to the increase in `tup_returned` and potentially impact performance.
+
+5. `db.SQL.tup_fetched`: The number of rows fetched from index scans decreased by 1.7x or 71% in the second snapshot, suggesting a potential change in query patterns or indexing strategies.
+
+6. `db.Cache.blks_hit`: The number of disk blocks found in the Aurora buffer cache decreased by 2.4x or 140% in the second snapshot, potentially leading to more disk reads and impacting performance.
+
+7. `db.Checkpoint.checkpoint_write_latency` and `db.Checkpoint.checkpoint_write_time`: The average and total time spent writing files to disk during checkpoints decreased significantly (around 1.5x or 50%) in the second snapshot, which could be related to changes in workload or system configuration.
+
+8. `db.IO.blks_read` and `db.IO.blk_read_time`: The number of disk blocks read and the time spent reading data file blocks increased substantially (103.7x and 6.1x, respectively) in the second snapshot, indicating potential performance issues related to disk I/O.
+
+9. `db.Temp.temp_files` and `db.Temp.temp_bytes`: The number of temporary files created and the amount of data written to temporary files decreased (2.2x and 1.8x, respectively) in the second snapshot, suggesting a potential change in query patterns or workload characteristics.
+
+Please note that without additional context or information about the specific workload, system configuration, or performance requirements, it is difficult to provide a more detailed analysis or recommendations based solely on these metric differences.
 
 
 
@@ -172,12 +1067,227 @@ zip archive.zip * -x *.html snapshot_*.json node_modules portable price.json
 
 
 
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
+
+Metric Definitions and Context:
+
+tup_returned: Represents data fetched from both sequential and index scans (bitmap index scans). A high value could indicate inefficient queries or a high number of full table scans.
+
+tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
+
+The description of reports are included. If you don't have information or do not understand some statistic, ask explicitly for this information; do not guess. Think step by step. Now, review the provided table and generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+To accomplish this task, follow these steps:
+1. Review the provided table containing additional metrics and their corresponding values for two different snapshots or time periods.
+2. Identify the metrics that have significant differences between the two snapshots or time periods.
+3. For each identified metric with a significant difference, analyze how this difference could potentially affect the overall performance, behavior, or troubleshooting of the database.
+4. Summarize these important differences and their potential impacts in a concise manner.
+5. Keep in mind that this summary will be combined with summaries from other sections of the larger report.
+6. If you encounter any metrics or statistics that you do not fully understand or lack sufficient information about, explicitly ask for clarification or additional details. Do not make assumptions or guesses.
+7. Approach this task methodically and step-by-step, considering each metric and its potential impact carefully.
+Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
+
+
+
+<table class="no-shadow">
+           <caption>Transactions</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of transactions in this instance that have been committed">db.Transactions.xact_commit</abbr></td><td>Commits per second</td><td><abbr title="Commits per second">576038</abbr></td><td class="s2-r-bg"><abbr title="Commits per second">259316</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>316722 [2.2x|122%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of transactions waiting for row lock grant">db.Transactions.blocked_transactions</abbr></td><td>Transactions</td><td><abbr title="Transactions">0</abbr></td><td class="s2-r-bg"><abbr title="Transactions">1</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1 [1x|100%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of transactions in this instance that have been rolled back">db.Transactions.xact_rollback</abbr></td><td>Rollbacks per second</td><td><abbr title="Rollbacks per second">192</abbr></td><td class="s2-r-bg"><abbr title="Rollbacks per second">123</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>69 [1.6x|56%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of unvacuumed transactions">db.Transactions.max_used_xact_ids</abbr></td><td>Transactions</td><td><abbr title="Transactions">8845386487</abbr></td><td class="s2-r-bg"><abbr title="Transactions">5699719697</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>3145666790 [1.6x|55%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of active transactions">db.Transactions.active_transactions</abbr></td><td>Transactions</td><td><abbr title="Transactions">73</abbr></td><td class="s2-r-bg"><abbr title="Transactions">55</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>18 [1.3x|33%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Average duration of commit operations">db.Transactions.commit_latency</abbr></td><td>Milliseconds per Transaction</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds per Transaction">981.98</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per Transaction">1521.17</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>539.19 [1.5x|55%]</td><td><abbr title="Milliseconds per Transaction">4792.601241919414</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per Transaction">12110.83192796913</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>7318.23 [2.5x|153%]</td><td><abbr title="Milliseconds per Transaction">367.66279069767444</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per Transaction">31.718214352985495</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>335.94 [11.6x|1059%]</td></tr>
+<tr><td><abbr title="Total transaction time spent in the last minute">db.Transactions.duration_commits</abbr></td><td>Milliseconds</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds">42744344.75</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">40084980.93</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>2659363.82 [1.1x|7%]</td><td><abbr title="Milliseconds">454980083</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">677915928</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>222935845 [1.5x|49%]</td><td><abbr title="Milliseconds">122286</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">130073</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>7787 [1.1x|6%]</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>User</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of connection attempts to this instance">db.User.total_auth_attempts</abbr></td><td>Connections</td><td><abbr title="Connections">138</abbr></td><td class="s2-r-bg"><abbr title="Connections">249</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>111 [1.8x|80%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of backends currently connected to this instance">db.User.numbackends</abbr></td><td>Connections</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Connections">5.42</abbr></td><td class="s2-r-bg"><abbr title="Connections">85.32</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>79.9 [15.7x|1474%]</td><td><abbr title="Connections">17</abbr></td><td class="s2-r-bg"><abbr title="Connections">171</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>154 [10.1x|906%]</td><td><abbr title="Connections">4</abbr></td><td class="s2-r-bg"><abbr title="Connections">4</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="The maximum number of connections allowed for a DB instance as configured in max_connections parameter.">db.User.max_connections</abbr></td><td>Connections</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>WAL</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of WAL files that have been successfully archived">db.WAL.archived_count</abbr></td><td>Files per minute</td><td><abbr title="Files per minute">0</abbr></td><td class="s2-r-bg"><abbr title="Files per minute">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of failed attempts for archiving WAL files">db.WAL.archive_failed_count</abbr></td><td>Files per minute</td><td><abbr title="Files per minute">0</abbr></td><td class="s2-r-bg"><abbr title="Files per minute">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+        <table class="no-shadow">
+           <caption>Checkpoint</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of scheduled checkpoints that have been performed">db.Checkpoint.checkpoints_timed</abbr></td><td>Checkpoints per minute</td><td><abbr title="Checkpoints per minute">59</abbr></td><td class="s2-r-bg"><abbr title="Checkpoints per minute">58</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>1 [1x|2%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Total amount of time that has been spent in the portion of checkpoint processing where files are written to disk">db.Checkpoint.checkpoint_write_latency</abbr></td><td>Milliseconds per checkpoint</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds per checkpoint">744601.5</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">361797.4</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>382804.1 [2.1x|106%]</td><td><abbr title="Milliseconds per checkpoint">744631</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">748545</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3914 [1x|1%]</td><td><abbr title="Milliseconds per checkpoint">744572</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">374273.5</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>370298.5 [2x|99%]</td></tr>
+<tr><td><abbr title="Total amount of time that has been spent in the portion of checkpoint processing where files are synchronized to disk">db.Checkpoint.checkpoint_sync_latency</abbr></td><td>Milliseconds per checkpoint</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">0.65</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>0.35 [1.5x|54%]</td><td><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="Total amount of time that has been spent in the portion of checkpoint processing where files are written to disk in milliseconds">db.Checkpoint.checkpoint_write_time</abbr></td><td>Milliseconds per checkpoint</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds per checkpoint">744601.5</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">486558.4</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>258043.1 [1.5x|53%]</td><td><abbr title="Milliseconds per checkpoint">744631</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">748585</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3954 [1x|1%]</td><td><abbr title="Milliseconds per checkpoint">744572</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">748527</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>3955 [1x|1%]</td></tr>
+<tr><td><abbr title="Total amount of time that has been spent in the portion of checkpoint processing where files are synchronized to disk in milliseconds">db.Checkpoint.checkpoint_sync_time</abbr></td><td>Milliseconds per checkpoint</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">0.98</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>0.02 [1x|2%]</td><td><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">2</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1 [2x|100%]</td><td><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds per checkpoint">1</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="Number of buffers written during checkpoints">db.Checkpoint.buffers_checkpoint</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">0</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of requested checkpoints that have been performed">db.Checkpoint.checkpoints_req</abbr></td><td>Checkpoints per minute</td><td><abbr title="Checkpoints per minute">0</abbr></td><td class="s2-r-bg"><abbr title="Checkpoints per minute">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of times the background writer stopped a cleaning scan because it had written too many buffers">db.Checkpoint.maxwritten_clean</abbr></td><td>Bgwriter clean stops per minute</td><td><abbr title="Bgwriter clean stops per minute">0</abbr></td><td class="s2-r-bg"><abbr title="Bgwriter clean stops per minute">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>Concurrency</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of deadlocks detected in this instance">db.Concurrency.deadlocks</abbr></td><td>Deadlocks per minute</td><td><abbr title="Deadlocks per minute">0</abbr></td><td class="s2-r-bg"><abbr title="Deadlocks per minute">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>I/O</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of disk blocks read in this instance">db.IO.blks_read</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">1335887</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">138566215</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>137230328 [103.7x|10273%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Time spent reading data file blocks by backends in this database in milliseconds">db.IO.blk_read_time</abbr></td><td>Milliseconds</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td><abbr title="Milliseconds">291.25</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">1771.62</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>1480.37 [6.1x|508%]</td><td><abbr title="Milliseconds">4785.251449999958</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">90490.28023333351</abbr></td><td class="c-r-bg"><span style="color: green"><b>+</b></span>85705.03 [18.9x|1791%]</td><td><abbr title="Milliseconds">0</abbr></td><td class="s2-r-bg"><abbr title="Milliseconds">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td></tr>
+<tr><td><abbr title="Number of buffers written directly by a backend">db.IO.buffers_backend</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">0</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of times a backend had to execute its own fsync call">db.IO.buffers_backend_fsync</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">0</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Number of buffers written by the background writer">db.IO.buffers_clean</abbr></td><td>Blocks per second</td><td><abbr title="Blocks per second">0</abbr></td><td class="s2-r-bg"><abbr title="Blocks per second">0</abbr></td><td class="c-r-bg">0 [0x|0%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>State</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+        </table>
+      
+
+        <table class="no-shadow">
+           <caption>Temp</caption>
+           <tr class="table-header "><td>Metric</td><td>Unit</td><td>Sum</td><td class="s2-h-bg">Sum</td><td class="c-h-bg">Diff</td><td>Avg</td><td class="s2-h-bg">Avg</td><td class="c-h-bg">Diff</td><td>Max</td><td class="s2-h-bg">Max</td><td class="c-h-bg">Diff</td><td>Min</td><td class="s2-h-bg">Min</td><td class="c-h-bg">Diff</td></tr>
+      	   
+<tr><td><abbr title="Number of temporary files created by queries in this instance">db.Temp.temp_files</abbr></td><td>Files per minute</td><td><abbr title="Files per minute">178</abbr></td><td class="s2-r-bg"><abbr title="Files per minute">82</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>96 [2.2x|117%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+<tr><td><abbr title="Total amount of data written to temporary files by queries in this instance">db.Temp.temp_bytes</abbr></td><td>Bytes per second</td><td><abbr title="Bytes per second">4954260863</abbr></td><td class="s2-r-bg"><abbr title="Bytes per second">2714625682</abbr></td><td class="c-r-bg"><span style="color: red"><b>-</b></span>2239635181 [1.8x|83%]</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td><td>-</td><td class="s2-r-bg">-</td><td class="c-r-bg">-</td></tr>
+        </table>
+
+
+OUTPUT:
+
+Summary of important differences in metrics:
+
+1. `db.Transactions.xact_commit`: The number of committed transactions decreased significantly (by 122%) in the second snapshot, indicating a potential drop in workload or throughput.
+
+2. `db.User.numbackends`: The number of backend connections increased substantially (by 1474%) in the second snapshot, which could indicate an increase in concurrent connections or potential connection leaks.
+
+3. `db.Checkpoint.checkpoint_write_latency`: The average time spent writing files to disk during checkpoints decreased significantly (by 106%) in the second snapshot, suggesting improved checkpoint performance.
+
+4. `db.Checkpoint.checkpoint_write_time`: The total time spent writing files to disk during checkpoints decreased (by 53%) in the second snapshot, aligning with the decrease in checkpoint write latency.
+
+5. `db.IO.blks_read`: The number of disk blocks read increased dramatically (by 10273%) in the second snapshot, indicating a potential increase in disk I/O or inefficient query plans.
+
+6. `db.IO.blk_read_time`: The time spent reading data file blocks increased significantly (by 508%) in the second snapshot, which could be related to the increase in disk blocks read.
+
+7. `db.Temp.temp_files`: The number of temporary files created by queries decreased (by 117%) in the second snapshot, suggesting a potential change in query patterns or optimization.
+
+8. `db.Temp.temp_bytes`: The amount of data written to temporary files decreased (by 83%) in the second snapshot, which could be related to the decrease in temporary file creation.
+
+These differences in metrics could potentially impact the overall performance, behavior, and troubleshooting of the database. For example, the increase in disk I/O and backend connections might indicate a need for further investigation or optimization, while the improvements in checkpoint performance and temporary file usage could be positive changes.
 
 
 
 
 
+You are a database expert. Consider this compare report for the statistics from the Aurora PostgreSQL. It is a part of the bigger report. You must summarize important differences in metrics which can affect the final conclusion on the troubleshooting. You will combine this summary with other summaries from other report sections. 
 
+Think step by step.
+
+The following metrics are grouped by correlations, if metric A is in the same group as metric B, then it means that they are following each other, by means of tops and buttoms on the graph.
+
+For snapshot 1:
+<table class="no-shadow">
+<tr><td>os.cpuUtilization.nice.avg</td></tr>
+<tr><td>os.memory.active.avg</td></tr>
+<tr><td>db.SQL.tup_fetched.sum</td></tr>
+<tr><td>db.SQL.tup_updated.sum</td></tr>
+<tr><td>os.memory.db.residentSetSize.avg</td></tr>
+<tr><td>db.Transactions.commit_latency.avg</td></tr></table><table class="no-shadow">
+<tr><td>os.cpuUtilization.total.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.avgReqSz.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.avgQueueLen.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.await.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.util.avg</td></tr>
+<tr><td>os.fileSys.used.avg</td></tr>
+<tr><td>os.memory.cached.avg</td></tr>
+<tr><td>os.memory.db.cache.avg</td></tr>
+<tr><td>os.memory.dirty.avg</td></tr>
+<tr><td>os.memory.inactive.avg</td></tr>
+<tr><td>db.Cache.blks_hit.sum</td></tr>
+<tr><td>db.SQL.logical_reads.sum</td></tr>
+<tr><td>os.diskIO.rdstemp.tps.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.writeIOsPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.writeKbPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.writeKb.sum</td></tr>
+<tr><td>db.SQL.tup_returned.sum</td></tr>
+<tr><td>db.Transactions.duration_commits.avg</td></tr>
+<tr><td>db.User.total_auth_attempts.sum</td></tr>
+<tr><td>db.Checkpoint.checkpoint_write_time.avg</td></tr>
+<tr><td>db.Transactions.max_used_xact_ids.sum</td></tr>
+<tr><td>db.Checkpoint.checkpoint_write_latency.avg</td></tr>
+<tr><td>db.SQL.total_query_time.sum</td></tr></table><table class="no-shadow">
+<tr><td>os.cpuUtilization.wait.avg</td></tr>
+<tr><td>os.fileSys.usedFiles.avg</td></tr>
+<tr><td>os.fileSys.usedPercent.avg</td></tr>
+<tr><td>db.Temp.temp_bytes.sum</td></tr>
+<tr><td>db.Temp.temp_files.sum</td></tr></table></td><td style="vertical-align: top;"><table class="no-shadow">
+<tr><td>os.diskIO.auroraStorage.auroraStorageBytesRx.sum</td></tr>
+<tr><td>os.diskIO.auroraStorage.auroraStorageBytesTx.sum</td></tr>
+<tr><td>os.diskIO.auroraStorage.writeIOsPS.avg</td></tr>
+<tr><td>os.diskIO.auroraStorage.writeThroughput.avg</td></tr></table><table class="no-shadow">
+<tr><td>os.diskIO.rdstemp.readIOsPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.readKbPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.readKb.sum</td></tr></table><table class="no-shadow">
+<tr><td>os.loadAverageMinute.fifteen.avg</td></tr>
+<tr><td>os.loadAverageMinute.five.avg</td></tr>
+<tr><td>os.loadAverageMinute.one.avg</td></tr></table><table class="no-shadow">
+<tr><td>os.tasks.sleeping.avg</td></tr>
+<tr><td>os.tasks.total.avg</td></tr></table>
+
+For snapshot 2:
+<table class="no-shadow">
+<tr><td>os.cpuUtilization.irq.avg</td></tr>
+<tr><td>os.diskIO.auroraStorage.readLatency.avg</td></tr>
+<tr><td>os.tasks.total.avg</td></tr>
+<tr><td>os.tasks.running.avg</td></tr>
+<tr><td>os.tasks.sleeping.avg</td></tr></table><table class="no-shadow">
+<tr><td>os.cpuUtilization.nice.avg</td></tr>
+<tr><td>os.cpuUtilization.user.avg</td></tr>
+<tr><td>os.cpuUtilization.total.avg</td></tr>
+<tr><td>os.diskIO.auroraStorage.auroraStorageBytesTx.sum</td></tr>
+<tr><td>os.diskIO.auroraStorage.auroraStorageBytesRx.sum</td></tr>
+<tr><td>os.diskIO.auroraStorage.readIOsPS.avg</td></tr>
+<tr><td>os.diskIO.auroraStorage.readThroughput.avg</td></tr>
+<tr><td>os.diskIO.auroraStorage.writeThroughput.avg</td></tr>
+<tr><td>os.diskIO.auroraStorage.writeIOsPS.avg</td></tr></table><table class="no-shadow">
+<tr><td>os.cpuUtilization.wait.avg</td></tr>
+<tr><td>os.fileSys.usedPercent.avg</td></tr>
+<tr><td>os.fileSys.used.avg</td></tr></table></td><td style="vertical-align: top;"><table class="no-shadow">
+<tr><td>os.diskIO.rdstemp.avgQueueLen.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.await.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.tps.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.writeIOsPS.avg</td></tr>
+<tr><td>os.memory.cached.avg</td></tr>
+<tr><td>os.memory.db.cache.avg</td></tr>
+<tr><td>os.memory.inactive.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.writeKbPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.writeKb.sum</td></tr></table><table class="no-shadow">
+<tr><td>os.diskIO.rdstemp.readIOsPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.readKbPS.avg</td></tr>
+<tr><td>os.diskIO.rdstemp.readKb.sum</td></tr></table><table class="no-shadow">
+<tr><td>os.loadAverageMinute.fifteen.avg</td></tr>
+<tr><td>os.loadAverageMinute.five.avg</td></tr>
+<tr><td>os.loadAverageMinute.one.avg</td></tr></table><table class="no-shadow">
+<tr><td>os.memory.active.avg</td></tr>
+<tr><td>os.memory.db.residentSetSize.avg</td></tr></table>
 
 
 
