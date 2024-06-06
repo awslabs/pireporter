@@ -1,0 +1,23 @@
+Based on the report details, the following is the detailed analyzes I made. It will include all the details, findings and analyzes of the SQL workload and deep dive.
+
+This output includes the following sections with comprehensive details and object names and important numbers:
+<h2>Summary:</h2> Summary of the findings related to my analyzes. If I detected any issues, then I include the root cause here. If no issues found, I will mention it. I will mention database tables which can be related to any issues.
+<h2>General information:</h2> Detailed summary of the general information section and any recommendations on instance configurations.
+<h2>Static metrics:</h2> Short summary on single_static_metrics section
+<h2>Non-def parameters:</h2> Short summary on single_nondef_params section
+<h2>Instance activity stats and top waits:</h2> Detailed summary on instance activity stats comparision and top wait events comparision from single_wait_events section, its correlation with my findings and other sections
+<h2>Additional metrics:</h2> Short summary of additional metrics comparision from single_additional_metrics section, its correlation with my findings and other sections
+<h2>Instance size:</h2> Short summary on instance size and recommendations from single_instance_recommendations section of the report
+<h2>OS metrics:</h2> Short summary of the compare between OS metrics from single_os_metrics section and its correlation with my findings and other sections
+<h2>Database metrics:</h2> Short summary of the compare between database metrics from single_db_metrics section and its correlation with my findings and other sections
+<h2>SQL workload analyzes:</h2> Matching SQLs to other sections of the report. I included following analyzes: Which SQLs can be the cause of the problem, if there are any impactful SQLs. Which databases and users contribute the most to these SQLs' execution by percentage.
+<h2>Analyzes:</h2> Detailed analyzes of the all sections of the report and explanation of the findings. Identify and discuss any complex relationships, dependencies, or correlations between different metrics, wait events, or database configurations. As you analyze the data and formulate your recommendations, think aloud and provide detailed explanations of your reasoning and decision-making process. Walk through your analysis step-by-step. Show how you come to this descisions and your analyses and thinking including the database objects affected and SQLIDs
+<h2>Recommendations:</h2> My concrete recommendations on how to mitigate the configuration and performance problems identified if any.
+
+The name of each section wrapped into <h2></h2> html tags.
+
+I will not include recommendations in each section individually. I will summarize recommendations in the <h2>Recommendations:</h2> section.
+
+I added as many relevant details as possible to make my analysis and recommendations more comprehensive and insightful.
+
+<h2>Summary:</h2>
