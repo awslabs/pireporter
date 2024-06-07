@@ -768,7 +768,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
                                        ]);
 
        var resp = await genAI.generate({section: 'single_summary', sqls: SQLsSortedByLoadHTML, sqltext: SQLTextsHTML})
-       console.log(replaceSQLIDWithLink(genAI.getSection('single_summary')))
+       //console.log(replaceSQLIDWithLink(genAI.getSection('single_summary')))
        console.log('LLM tokens used:', genAI.getUsage())
     }
 
@@ -1971,7 +1971,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
                                        ]);
 
        var resp = await genAI.generate({section: 'compare_summary', sqls: SQLsSortedByLoadHTML, sqltext: SQLTextsHTML})
-       console.log(replaceSQLIDWithLink(genAI.getSection('compare_summary')))
+       //console.log(replaceSQLIDWithLink(genAI.getSection('compare_summary')))
        console.log('LLM tokens used:', genAI.getUsage())
     }
 
