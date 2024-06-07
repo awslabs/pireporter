@@ -15,6 +15,14 @@ GenAI analyses can be optionally enabled during the report generation phase. The
 
 The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Cloud 3 Sonnet model. The account which will generate reports must enable access to the required Cloud 3 model. Use this guide to enable access: [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
 
+Be aware that using `--ai-analyzes` will incur additional charges. The tool will always print out the number of input and output tokens used to accomplish the analyses. It will help you estimate the cost.
+
+Example:
+```sh
+$ ./pireporter --create-report --snapshot snapshot_apg-bm_20240424070000_20240424080000.json --ai-analyzes
+LLM tokens used: { input_tokens: 35422, output_tokens: 6101 }
+```
+
 In the new `conf.json` file, some parameters related to GenAI, such as the AWS region and model ID, can be configured.
 
 A new section named "GenAI Analyses of the Report" will appear at the top of the report. Check the screenshot below for an example.
