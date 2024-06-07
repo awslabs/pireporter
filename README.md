@@ -6,12 +6,29 @@ The PI Reporter is a tool designed to significantly streamline the process of pe
 * **Snapshot creation**: Capturing a snapshot of a specified time range, with the data stored in a JSON file.
 * **HTML reports**: Generating HTML reports for individual snapshots and for comparison of two snapshots.
 
+
+##### New major version 2.0 released
+
+The main feature of this version is integration with Amazon Bedrock to leverage the power of the Cloud 3 models for analyzing single snapshot and comparing snapshot reports, generating detailed report with summary (including root cause analyzes) and recommendations for all sections of the report. This will significantly help and save time during troubleshooting and report reading.
+
+GenAI analyses can be optionally enabled during the report generation phase. The new attribute `--ai-analyzes` has been introduced for this purpose.
+
+The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Cloud 3 Sonnet model. The account which will generate reports must enable access to the required Cloud 3 model. Use this guide to enable access: [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
+
+In the new `conf.json` file, some parameters related to GenAI, such as the AWS region and model ID, can be configured.
+
+A new section named "GenAI Analyses of the Report" will appear at the top of the report. Check the screenshot below for an example.
+
+Additionally, the comments associated with snapshots using the `-m` command-line argument will be considered by the LLM during analyzes. This provides a way to give the LLM a hint about a particular period or to include your observations, such as "Applications were hanging, and no DML transactions could be completed." You can always update the snapshot JSON file to change or add comments.
+
+
 ##### Some of the main benefits of the PI reporter are:
 
 * In a few minutes get a report with all instance related information on one page. No need to go to different places and gather the data manually.
 * Generate the compare period reports which are the most efficient and fast way to detect any changes in performance, workload, stats or configuration.
 * Understand if the instance can handle the workload and if a right-sizing exercise is required for the instance.
 * To provide instance, workload, and performance statistics to third parties like external support engineers or companies without giving them direct access to the system. This increases security while supplying the engineers with adequate information to make timely decisions.
+* LLM analyzes of the report, including root cause of the problem if any and recommendations.
 
 ##### Functional capabilities:
 
@@ -29,6 +46,7 @@ The following data will be gathered into the snapshot files and represented in t
 * SQL Insights: Presents top SQL queries ranked by load, read I/O, write I/O, and combined read-write I/O. Each SQL entry includes various statistics, additional information from pg_stat_statements, and wait events. It also displays the distribution of SQL load across different databases and users.
 * Log File Analysis: The tool downloads and analyzes log files from the snapshot period, grouping and displaying error or fatal messages in the report if any are found.
 * Compare Period Report: Enables comparison between two snapshots to quickly identify differences in metrics and SQL performance.
+* GenAI analyzes of the report with summary of the possible root cause and recommendations.
 
 ##### Screenshots
 
@@ -56,6 +74,10 @@ So in this case, the metric increased by an absolute value of 7.81 units, which 
 
 ![Screen 4](https://raw.githubusercontent.com/awslabs/pireporter/master/screen4.png)
 
+
+GenAI analyzes of the report:
+
+![Screen 5](https://raw.githubusercontent.com/awslabs/pireporter/master/screen5.png)
 
 ##### How to use
 
@@ -157,7 +179,13 @@ In both cases we have `Europe/Berlin` timezone. If you have differnt values, the
                                  standard deviations (SDs). By default the      
                                  maximum usage is used.
   -m, --comment string           Provide a comment to associate with the        
-                                 snapshot.                                      
+                                 snapshot.
+  -a, --ai-analyzes              When generating reports, include the analysis  
+                                 from the language model (Amazon Bedrock:       
+                                 Claude by Anthropic), which provides its       
+                                 findings, analysis, and recommendations. This  
+                                 option works with create report and create     
+                                 compare periods report.                             
   -r, --create-report            Create HTML report for snapshot.               
   -c, --create-compare-report    Create compare snapshots HTML report for two   
                                  snapshots.                                     
