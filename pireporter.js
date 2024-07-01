@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "2.0"
+global.version = "2.0.1"
 
 const fs = require('fs');
 const path = require('path');
@@ -310,7 +310,7 @@ const getReportsDirectory = function (reportsDirectory) {
 
 
 const getEC2Details = (a) => {
-  var EC2Class = a.substr(3);
+  var EC2Class = dbInstanceToEC2(a.substr(3));
   var request = ec2.describeInstanceTypes({InstanceTypes: [EC2Class]});
   return request;
 };
@@ -569,6 +569,26 @@ function calculateStandardDeviation(numbers, mean) {
   const standardDeviation = Math.sqrt(averageSquaredDifference);
   return standardDeviation;
 }
+
+
+// Some db instance names to not have equivalent EC2 instance. The instance db.x2g.* do not have x2g.* instances, only x2gd.* instances.
+// To workaround this function must convert the names
+function dbInstanceToEC2(instance_name) {
+  if (instance_name.startsWith("x2g")) {
+     return instance_name.replace("x2g", "x2gd");
+  } else {
+     return instance_name
+  }
+}
+
+function ec2InstanceToDB(instance_name) {
+  if (instance_name.startsWith("x2gd")) {
+     return instance_name.replace("x2gd", "x2g");
+  } else {
+     return instance_name
+  }
+}
+
 
 
 const generateCPUandIOArrays = async function (DbiResourceId, vCPUs) {
@@ -2288,15 +2308,16 @@ const counterMetrics = async function (generalInformation) {
       availableInstanceClasses = availableInstanceClasses.filter(i => i !== 'db.serverless')
       
       try {  
-        var ec2Instances = await ec2.describeInstanceTypes({InstanceTypes: availableInstanceClasses.map(i => i.substr(3))});
+        var ec2Instances = await ec2.describeInstanceTypes({InstanceTypes: availableInstanceClasses.map(i => dbInstanceToEC2(i.substr(3)))});
       } catch (err) { reject(err) }
+      
     
       //          0                 1               2        3            4                  5                    6                     7                 8                9
       //  [Instance class, Current generation?, Memory GB, vCPUs, netowrk max MB/s, burstable netowrk?, baseline network MB/s, local storage GB, max_connections, EBS throughput MB/s]
       var availableInstanceDetails = ec2Instances.InstanceTypes.map(i => {
         let NetworkMaxBandwidthMbps = i.NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.PeakBandwidthInGbps}, 0) * 1000;
         let NetworkBaselineBandwidthMbps = i.NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.BaselineBandwidthInGbps}, 0) * 1000;
-        var network = calcNetworkPerformanceLimits({DBInstanceClass: 'db.'+i.InstanceType, EC2Details: { NetworkPerformanceMbps: NetworkMaxBandwidthMbps,
+        var network = calcNetworkPerformanceLimits({DBInstanceClass: 'db.'+ec2InstanceToDB(i.InstanceType), EC2Details: { NetworkPerformanceMbps: NetworkMaxBandwidthMbps,
                                                                                                          NetworkBaselineMbps: NetworkBaselineBandwidthMbps,
                                                                                                          BurstableNetworkPerformance: (NetworkMaxBandwidthMbps > NetworkBaselineBandwidthMbps) ? "yes" : "no" } 
               })
