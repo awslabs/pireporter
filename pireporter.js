@@ -2660,6 +2660,8 @@ rds.describeDBInstances(params, async function(err, data) {
             }
           };
     
+      GeneralInformation.DBInstanceClass = 'db.x2gd.2xlarge'
+      console.log(GeneralInformation)
       resolve(GeneralInformation);
       
      }

@@ -39,8 +39,7 @@
             "Sid": "pireporter3",
             "Effect": "Allow",
             "Action": [
-                "rds:DescribeDBClusters",
-                "rds:DescribeGlobalClusters"
+                "rds:DescribeDBClusters"
             ],
             "Resource": "*",
             "Condition": {
@@ -51,6 +50,14 @@
         },
         {
             "Sid": "pireporter4",
+            "Effect": "Allow",
+            "Action": [
+                "rds:DescribeGlobalClusters"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "pireporter5",
             "Effect": "Allow",
             "Action": [
                 "bedrock:InvokeModel"
