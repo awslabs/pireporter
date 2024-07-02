@@ -2660,8 +2660,6 @@ rds.describeDBInstances(params, async function(err, data) {
             }
           };
     
-      GeneralInformation.DBInstanceClass = 'db.x2gd.2xlarge'
-      console.log(GeneralInformation)
       resolve(GeneralInformation);
       
      }
@@ -2819,7 +2817,11 @@ const getWaitsAndSQLs = async function (GeneralInformation) {
       ]
     });
     
-    if (PITOPWaitEventsRaw.MetricList[0].DataPoints.length === 0 || PITOPWaitEventsRaw.MetricList[0].DataPoints.reduce((sum, obj) => {return sum + obj.Value;}, 0) === 0) {
+    
+    //console.log('DEBUG', 'PI Wait events', JSON.stringify(PITOPWaitEventsRaw, null, 2))
+    //console.log('DEBUG', 'Sum of data point values', PITOPWaitEventsRaw.MetricList[0].DataPoints.reduce((sum, obj) => {return sum + obj.Value;}, 0))
+    
+    if (PITOPWaitEventsRaw.MetricList[0].DataPoints.length === 0 || ! PITOPWaitEventsRaw.MetricList[0].DataPoints.reduce((sum, obj) => {return sum + obj.Value;}, 0) > 0) {
        console.log('No data return from Performance Insights for this timeframe. Connot continue.')
        process.exit(1)
     }
@@ -3009,7 +3011,8 @@ try {
          console.log(error);
          reject(error);
     }
-    //console.log('Output', 'PIDescDimKeysRaw', JSON.stringify(PIDescDimKeysRaw_byDB, null, 2));
+  
+  // console.log('DEBUG', 'PI Desc Dimension Keys by DB', JSON.stringify(PIDescDimKeysRaw_byDB, null, 2));
   
   
   var Databases = PIDescDimKeysRaw_byDB.PartitionKeys.map(Key => Key.Dimensions["db.name"])
