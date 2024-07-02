@@ -574,7 +574,7 @@ function calculateStandardDeviation(numbers, mean) {
 // Some db instance names to not have equivalent EC2 instance. The instance db.x2g.* do not have x2g.* instances, only x2gd.* instances.
 // To workaround this function must convert the names
 function dbInstanceToEC2(instance_name) {
-  if (instance_name.startsWith("x2g")) {
+  if (instance_name.startsWith("x2g.") || instance_name.includes(".x2g.")) {
      return instance_name.replace("x2g", "x2gd");
   } else {
      return instance_name
@@ -582,7 +582,7 @@ function dbInstanceToEC2(instance_name) {
 }
 
 function ec2InstanceToDB(instance_name) {
-  if (instance_name.startsWith("x2gd")) {
+  if (instance_name.startsWith("x2gd.") || instance_name.includes(".x2gd.")) {
      return instance_name.replace("x2gd", "x2g");
   } else {
      return instance_name
@@ -1121,10 +1121,10 @@ const getPrices = async function (GeneralInformation) {
       
       if (GeneralInformation.DBInstanceClass !== 'db.serverless') {
         const provisioned_SKU = Object.values(PriceList.products).find(p =>
-          p.productFamily === "Database Instance" && p.attributes.databaseEngine === pricingDBEngine && p.attributes.instanceType === GeneralInformation.DBInstanceClass && !p.attributes.storage.includes("IO Optimization")
+          p.productFamily === "Database Instance" && p.attributes.databaseEngine === pricingDBEngine && p.attributes.instanceType === ec2InstanceToDB(GeneralInformation.DBInstanceClass) && !p.attributes.storage.includes("IO Optimization")
         );
         const provigioned_IOO_SKU = Object.values(PriceList.products).find(p =>
-          p.productFamily === "Database Instance" && p.attributes.databaseEngine === pricingDBEngine && p.attributes.instanceType === GeneralInformation.DBInstanceClass && p.attributes.storage.includes("IO Optimization")
+          p.productFamily === "Database Instance" && p.attributes.databaseEngine === pricingDBEngine && p.attributes.instanceType === ec2InstanceToDB(GeneralInformation.DBInstanceClass) && p.attributes.storage.includes("IO Optimization")
         );
         
         const provisionedSku = provisioned_SKU.sku
