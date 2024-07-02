@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "2.0.1"
+global.version = "2.0.2"
 
 const fs = require('fs');
 const path = require('path');
