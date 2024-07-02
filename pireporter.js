@@ -2127,7 +2127,7 @@ const counterMetrics = async function (generalInformation) {
   var cwData = await getCWMetrics(generalInformation)
   // Check if cloudWatch returns data
   if (cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Values.length === 0) {
-    console.log('No data returns from CloudWatch for this timeframe. Cannot continue.')
+    console.log('No performance data available from CloudWatch for the selected timeframe. Please choose a timeframe with application load or user activity.')
     process.exit(1)
   }
   
@@ -2822,7 +2822,7 @@ const getWaitsAndSQLs = async function (GeneralInformation) {
     //console.log('DEBUG', 'Sum of data point values', PITOPWaitEventsRaw.MetricList[0].DataPoints.reduce((sum, obj) => {return sum + obj.Value;}, 0))
     
     if (PITOPWaitEventsRaw.MetricList[0].DataPoints.length === 0 || ! PITOPWaitEventsRaw.MetricList[0].DataPoints.reduce((sum, obj) => {return sum + obj.Value;}, 0) > 0) {
-       console.log('No data return from Performance Insights for this timeframe. Connot continue.')
+       console.log('No performance data available from Performance Insights for the selected timeframe. Please choose a timeframe with application load or user activity.')
        process.exit(1)
     }
     
