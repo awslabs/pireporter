@@ -755,10 +755,11 @@ const generateHTMLReport = async function(snapshotObject, genai) {
     // SQLs section end
 
 
-
+    var nonDefParameters = nonDefParametersHTML.length === 0 ? 'There is no non-default parameters. Skip this section of the report.' : nonDefParametersHTML
+    
     if (genai) {
        var resp = await genAI.generateParallel([{section: 'single_general_info', data: generalInformationHTML},
-                                                {section: 'single_nondef_params', data: nonDefParametersHTML},
+                                                {section: 'single_nondef_params', data: nonDefParameters},
                                                 {section: 'single_wait_events', data: instanceActivityHTML + "\n" + waitEventsHTML, events: WaitEvents},
                                                 {section: 'single_static_metrics', data: staticMetricsHTML},
                                                 {section: 'single_additional_metrics', data: additionalMetricsHTML},
@@ -1060,6 +1061,15 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
        ${printParams(snapshotObject2.NonDefParameters)}
        </table>`
     }
+
+
+    var nonDefParameters1 = nonDefParametersHTML1.length === 0 ? 'There is no non-default parameters for this snapshot.' : nonDefParametersHTML1
+    var nonDefParameters2 = nonDefParametersHTML2.length === 0 ? 'There is no non-default parameters for this snapshot.' : nonDefParametersHTML2
+    var nonDefParameters = `<table class="container-table"><tr>
+  <td style="vertical-align: top">${nonDefParameters1}</td><td style="vertical-align: top">${nonDefParameters2}</td>
+  </tr>
+  </table>
+    `
 
     var nonDefParametersHTML = `<table class="container-table"><tr>
   <td style="vertical-align: top">${nonDefParametersHTML1}</td><td style="vertical-align: top">${nonDefParametersHTML2}</td>
@@ -1961,7 +1971,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
 
     if (genai) {
        var resp = await genAI.generateParallel([{section: 'compare_general_info', data: generalInformationHTML},
-                                                {section: 'compare_nondef_params', data: nonDefParametersHTML},
+                                                {section: 'compare_nondef_params', data: nonDefParameters},
                                                 {section: 'compare_wait_events', data: instanceActivityHTML + "\n" + waitEventsHTML, events: WaitEvents},
                                                 {section: 'compare_static_metrics', data: staticMetricsHTML},
                                                 {section: 'compare_additional_metrics', data: additionalMetricsHTML},
