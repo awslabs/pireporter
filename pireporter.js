@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "2.0.2"
+global.version = "2.0.3"
 
 const fs = require('fs');
 const path = require('path');
@@ -2356,10 +2356,10 @@ const counterMetrics = async function (generalInformation) {
       }
       
   
-      var snapshot_fsys_used = os_metrics.fileSys.metrics.find(m => m.metric === 'os.fileSys.used').max / 1024 / 1024
-      var snapshot_max_backends = db_metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').max
+      var snapshot_fsys_used = (os_metrics.fileSys.metrics.find(m => m.metric === 'os.fileSys.used').max || os_metrics.fileSys.metrics.find(m => m.metric === 'os.fileSys.used').avg) / 1024 / 1024
+      var snapshot_max_backends = db_metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').max || db_metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg
       var snapshot_bc_hr = additional_metrics.bufferCacheHitRatio.value
-      var snapshot_mem_swap_value = os_metrics.memory.metrics.find(m => m.metric === 'os.memory.db.swap').max
+      var snapshot_mem_swap_value = os_metrics.memory.metrics.find(m => m.metric === 'os.memory.db.swap').max || os_metrics.memory.metrics.find(m => m.metric === 'os.memory.db.swap').avg
       var snapshot_mem_swap = snapshot_mem_swap_value === 5e-324 ? 0 : snapshot_mem_swap_value
       var snapshot_memory_total = Math.round(static_metrics.memory[static_metrics.memory.length - 1].Value / 1024 / 1024)
       
