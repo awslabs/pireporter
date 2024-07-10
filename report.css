@@ -15,6 +15,13 @@
     background-color: khaki;
 }
 
+.hideable {
+    display: none;
+  }
+
+.clickable {
+  cursor: pointer;
+}
 
 .s2-c-color {
   background-color: lightcyan !important;
@@ -92,6 +99,16 @@ table {
 	padding: 0px;
 }
 
+
+.container-table {
+  box-shadow: none;
+  border-style: none !important;
+  margin: 0px;
+  padding: 0px;
+  display: table;
+  width: initial;
+}
+
 th, td {
     text-align: left;
     padding: 3px;
@@ -109,6 +126,15 @@ tr:hover > td {
 }
 
 tr:hover > td:first-child { background-color: #e8d3cf !important}
+
+
+.container-table table {margin: 1px}
+
+.container-table tr {background-color: transparent}
+
+.container-table > tbody > tr > td {border-style: none !important;}
+
+.container-table > tbody > tr > td:first-child {background-color: transparent !important;}
 
 
 .no-border {
@@ -143,23 +169,6 @@ a {
 	margin: 15px;
 	display: inline-block;
 }
-
-.container-table {
-  box-shadow: none;
-  border-style: none !important;
-  margin: 0px;
-  padding: 0px;
-  display: table;
-  width: initial;
-}
-
-.container-table table {margin: 1px}
-
-.container-table tr {background-color: transparent}
-
-.container-table > tbody > tr > td {border-style: none !important;}
-
-.container-table > tbody > tr > td:first-child {background-color: transparent !important;}
 
 body {
 	font-family: monospace;

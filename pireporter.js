@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "2.0.3"
+global.version = "2.0.4"
 
 const fs = require('fs');
 const path = require('path');
@@ -2938,7 +2938,9 @@ const getWaitsAndSQLs = async function (GeneralInformation) {
 
 
 try {
-    var sqlids = await pi.describeDimensionKeys({
+  
+   /*
+   var sqlids = await pi.describeDimensionKeys({
       ServiceType: "RDS",
       Identifier: GeneralInformation.DbiResourceId,
       StartTime: startTime,
@@ -2947,35 +2949,63 @@ try {
       Metric: 'db.load.avg',
       GroupBy: { Group: 'db.sql', Limit: 25 }
     });
+   */
+   
+    var sqlidsTokenized = await pi.describeDimensionKeys({
+      ServiceType: "RDS",
+      Identifier: GeneralInformation.DbiResourceId,
+      StartTime: startTime,
+      EndTime: endTime,
+      PeriodInSeconds: pseconds,
+      Metric: 'db.load.avg',
+      GroupBy: { 
+       Dimensions: [ "db.sql_tokenized.id", "db.sql_tokenized.statement", "db.sql_tokenized.db_id"],
+       Group: "db.sql_tokenized",
+       Limit: 25
+      },
+    });
   
+  //#ag
+  
+    //console.log('DEBUG', JSON.stringify(sqlidsTokenized, null, 2))
+    
     
     } catch (error) {
          console.log(error);
          reject(error);
     }
   
-  //console.log('Output', 'sqlids', sqlids);
-
-  var sqlTextFullPromises = sqlids.Keys.map(async Key => {
-    var SQLTextsFullRaw = await pi.getDimensionKeyDetails({
-       Group: 'db.sql',
-       GroupIdentifier: Key.Dimensions["db.sql.id"],
-       Identifier: GeneralInformation.DbiResourceId,
-       ServiceType: 'RDS',
-       RequestedDimensions: [
-          'statement',
-       ]
-    });
   
-    var dimension = SQLTextsFullRaw.Dimensions[0]
-    
-    if (dimension.hasOwnProperty('Dimension')) {
-       delete dimension['Dimension'];
-    }
+  
+  var sqlidsPromises = sqlidsTokenized.Keys.map(async Key => {
+  
+   let sqlidsRaw = await pi.describeDimensionKeys({
+      ServiceType: "RDS",
+      Identifier: GeneralInformation.DbiResourceId,
+      StartTime: startTime,
+      EndTime: endTime,
+      PeriodInSeconds: pseconds,
+      Metric: 'db.load.avg',
+      GroupBy: { Group: 'db.sql', Limit: 25 },
+      Filter: { 
+        "db.sql.tokenized_id" : Key.Dimensions["db.sql_tokenized.id"]
+      }
+      
+    });
+
+   //console.log('DEBUG', JSON.stringify(sqlidsRaw, null, 2))
+  
+    let Res = sqlidsRaw.Keys.map(({ Dimensions, Total }) => ({
+          "db.sql.db_id": Dimensions["db.sql.db_id"],
+          "db.sql.id": Dimensions["db.sql.id"],
+          "db.sql.statement": Dimensions["db.sql.statement"],
+          "db.load.avg": Number(Total.toFixed(3))
+        }));
   
     return { 
-             sql_id: Key.Dimensions["db.sql.tokenized_id"],
-             sql_text_full: dimension
+             sql_id_tokinized: Key.Dimensions["db.sql_tokenized.id"],
+             sql_text_tokinized: Key.Dimensions["db.sql_tokenized.statement"],
+             sql_ids: Res
            } 
     
   });
@@ -2983,13 +3013,67 @@ try {
   
   var sqlTextFull = []
   
-  for await (const val of sqlTextFullPromises){
+  for await (const val of sqlidsPromises){
     sqlTextFull.push(val)
   }
 
   
+  //console.log('Output', 'sqlids', sqlids);
+
+  
+  var sqlTexts = []
+  for (let i = 0; i < sqlTextFull.length; i++) {
+    let sql = sqlTextFull[i].sql_ids
+    
+    let sqlTextFullPromises = sql.map(async Key => {
+      let SQLTextsFullRaw = await pi.getDimensionKeyDetails({
+       Group: 'db.sql',
+       GroupIdentifier: Key["db.sql.id"],
+       Identifier: GeneralInformation.DbiResourceId,
+       ServiceType: 'RDS',
+       RequestedDimensions: [
+          'statement',
+       ]
+    });
+    
+    //console.log('DEBUG', JSON.stringify(SQLTextsFullRaw, null, 2))
+  
+    var dimension = SQLTextsFullRaw.Dimensions[0]
+    
+    if (dimension.hasOwnProperty('Dimension')) {
+       delete dimension['Dimension'];
+    }
+    
+    return { 
+             sql_id: Key["db.sql.id"],
+             sql_db_id: Key["db.sql.db_id"],
+             sql_text_full: dimension.Value
+           } 
+    
+    });
+    
+    for await (const val of sqlTextFullPromises){
+       sqlTexts.push(val)
+    }  
+  }
+  
 
 
+  sqlTextFull.forEach(mainObj => {
+    mainObj.sql_ids.forEach(sqlIdObj => {
+      const matchingSubObj = sqlTexts.find(subObj =>
+        subObj.sql_db_id === sqlIdObj["db.sql.db_id"] &&
+        subObj.sql_id === sqlIdObj["db.sql.id"]
+      );
+      if (matchingSubObj) {
+        delete sqlIdObj['db.sql.statement'];
+        sqlIdObj["sql_full_text"] = matchingSubObj.sql_text_full;
+      }
+    });
+  });
+  
+  
+  
 try {
     var PIDescDimKeysRaw_byDB = await pi.describeDimensionKeys({
       ServiceType: "RDS",
@@ -3391,6 +3475,7 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName})
        
        var pi_snapshot = {
            $META$: {
+              version: global.version,
               region: myRegion,
               startTime: results[0].waits.AlignedStartTime,
               endTime: results[0].waits.AlignedEndTime,
