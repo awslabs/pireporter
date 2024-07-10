@@ -221,6 +221,26 @@ const replaceSQLIDWithLink = function (text) {
 const htmlScript = `
   document.addEventListener('DOMContentLoaded', function() {
   var links = document.querySelectorAll('.sql-link');
+  var tables = document.querySelectorAll('.toggle-table');
+  
+  tables.forEach(function(table) {
+    table.addEventListener('click', function(e) {
+      var clickedRow = e.target.closest('tr');
+      if (clickedRow && clickedRow.hasAttribute('rid')) {
+        var rid = clickedRow.getAttribute('rid');
+        var hiddenRow = this.querySelector('tr[srid="' + rid + '"]');
+        
+        if (hiddenRow) {
+          if (hiddenRow.style.display === "none" || hiddenRow.style.display === "") {
+            hiddenRow.style.display = "table-row";
+          } else {
+            hiddenRow.style.display = "none";
+          }
+        }
+      }
+    });
+  });
+
 
   links.forEach(function(link) {
     link.addEventListener('click', function(event) {
@@ -265,6 +285,9 @@ const generateHTMLReport = async function(snapshotObject, genai) {
       process.exit(1)
     }
 
+    if (! snapshotObject.$META$.version) {
+      snapshotObject.$META$.version = "2.0.3"
+    }
 
     //console.log('Parsed JSON object:', snapshotObject);
 
@@ -715,18 +738,49 @@ const generateHTMLReport = async function(snapshotObject, genai) {
         }
       }
 
-      var rows = '',
-        rowdata = ''
+      var rows = '', rowdata = ''
+      
+      
+    
+    if (parseInt(snapshotObject.$META$.version.split(".").join("")) < 204 ) {
       for (let i = 0; i < sqlTexts.length; i++) {
         rowdata = td(sqlTexts[i].sql_id) +
           td(getSQLDBid(sqlTexts[i].sql_id)) +
           td(sqlTexts[i].sql_text_full.Value)
 
         rows = `${rows}\n<tr id="S${sqlTexts[i].sql_id}">${rowdata}</tr>`
+       }
+        
+      } else {
+      
+      
+      for (let i = 0; i < sqlTexts.length; i++) {
+        var subrows = ''
+        for (let j = 0; j < sqlTexts[i].sql_ids.length; j++) {
+           subrows = `${subrows}
+             <tr>${td(sqlTexts[i].sql_ids[j]["db.sql.id"]) + td(sqlTexts[i].sql_ids[j]["db.sql.db_id"]) + td(sqlTexts[i].sql_ids[j].sql_full_text) + td(sqlTexts[i].sql_ids[j]["db.load.avg"])}</tr>
+           `
+        }
+        
+        rowdata = `<tr rid="row${i}" id="S${sqlTexts[i].sql_id_tokinized}" class="${subrows.length > 5 ? "clickable" : ""}">${td("<b>"+sqlTexts[i].sql_id_tokinized+"</b>") + td("<b>"+getSQLDBid(sqlTexts[i].sql_id_tokinized)+"</b>") + td("<b>"+sqlTexts[i].sql_text_tokinized+"</b>")}</tr>`
+
+        if (subrows.length > 5) {
+          rowdata = rowdata + `
+          <tr srid="row${i}" class="hideable"><td colspan="3">
+           <table style="margin-left:15px" class="no-shadow">
+           <tr><td>sqlid</td><td>db sqlid</td><td>full text</td><td>db load</td></tr>
+           ${subrows}</table>
+          </td></tr>
+          `
+        }
+          
+        rows = `${rows}\n${rowdata}`
+      }
+ 
 
       }
       mainHTML = `
-     <table style="width:initial">
+     <table style="width:initial" class="toggle-table">
       	   <caption>SQLs full text ${infoMessage(`By default, PostgreSQL databases truncate queries longer than 1,024 bytes. To increase the query size, change 
                  the track_activity_query_size parameter in the DB parameter group associated with your DB instance. When you 
                  change this parameter, a DB instance reboot is required.`)}</caption>
@@ -945,6 +999,14 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     catch (err) {
       console.error('Error reading file report.style:', err)
       process.exit(1)
+    }
+
+    if (! snapshotObject1.$META$.version) {
+      snapshotObject1.$META$.version = "2.0.3"
+    }
+    
+    if (! snapshotObject2.$META$.version) {
+      snapshotObject2.$META$.version = "2.0.3"
     }
 
 
@@ -1916,12 +1978,18 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     const generateSQLTextsHTML = function(snap1, snap2, sqls) {
       var mainHTML = ''
       
-      const sqlTexts = []
-      sqlTexts[1] = snap1.SQLTextFull
-      sqlTexts[2] = snap2.SQLTextFull
+      const sqlFullTexts1 = snap1.SQLTextFull
+      const sqlFullTexts2 = snap2.SQLTextFull
+      
+      var rows = '', rowdata = '', bg = ''
+      
+    var snap1Version = parseInt(snapshotObject1.$META$.version.split(".").join(""))
+    var snap2Version = parseInt(snapshotObject2.$META$.version.split(".").join(""))
 
-      const getSQLText = function(sqlid, snapID) {
-        var sqlText = sqlTexts[snapID].find(sql => sql.sql_id === sqlid)
+     
+     const getSQLText = function(sqlid, snapID) {
+        var sqlTexts = snapID === 1 ? sqlFullTexts1 : sqlFullTexts2
+        var sqlText = sqlTexts.find(sql => sql.sql_id === sqlid)
         if (sqlText) {
           return sqlText.sql_text_full.Value
         }
@@ -1929,8 +1997,17 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
           return '-'
         }
       }
-
-      var rows = '', rowdata = '', bg = ''
+    
+     const getSQLTextNew = function(sqlid, snapID) {
+        var sqlTexts = snapID === 1 ? sqlFullTexts1 : sqlFullTexts2
+        var sqlText = sqlTexts.find(sql => sql.sql_id_tokinized === sqlid)
+        return sqlText
+      }
+    
+            // #ag
+            
+    if (snap1Version < 204 && snap2Version < 204) {
+      
       for (let i = 0; i < sqls.length; i++) {
         bg = sqls[i].snap === 2 ? 's2-r-bg' : ''
         rowdata = td(sqls[i].sql_id, bg) +
@@ -1940,8 +2017,60 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
         rows = `${rows}\n<tr id="S${sqls[i].sql_id}">${rowdata}</tr>`
 
       }
+        
+      } else if (snap1Version >= 204 && snap2Version >= 204) {
+    
+            
+         for (let i = 0; i < sqls.length; i++) {
+
+           var sqlTexts1 = getSQLTextNew(sqls[i].sql_id, 1)
+           var subrows1 = ''
+           if (sqlTexts1) {
+             for (let j = 0; j < sqlTexts1.sql_ids.length; j++) {
+               subrows1 = `${subrows1}
+                <tr>${td(sqlTexts1.sql_ids[j]["db.sql.id"]) + td(sqlTexts1.sql_ids[j]["db.sql.db_id"]) + td(sqlTexts1.sql_ids[j].sql_full_text) + td(sqlTexts1.sql_ids[j]["db.load.avg"])}</tr>
+              `
+             }
+             subrows1 = "<table style=\"margin-left:15px\" class=\"no-shadow\"><tr><td>Snapshot 1: sqlid</td><td>db sqlid</td><td>full text</td><td>db load</td></tr>\n" + subrows1 + "</table>"
+           }
+           
+           var sqlTexts2 = getSQLTextNew(sqls[i].sql_id, 2)
+           var subrows2 = ''
+           if (sqlTexts2) {
+             for (let j = 0; j < sqlTexts2.sql_ids.length; j++) {
+               subrows2 = `${subrows2}
+                <tr>${td(sqlTexts2.sql_ids[j]["db.sql.id"]) + td(sqlTexts2.sql_ids[j]["db.sql.db_id"]) + td(sqlTexts2.sql_ids[j].sql_full_text) + td(sqlTexts2.sql_ids[j]["db.load.avg"])}</tr>
+              `
+             }
+             subrows2 = "<table style=\"margin-left:15px\" class=\"s2-r-bg no-shadow\"><tr><td>Snapshot 2: sqlid</td><td>db sqlid</td><td>full text</td><td>db load</td></tr>\n" + subrows2 + "</table>"
+           }
+
+           bg = sqls[i].snap === 2 ? 's2-r-bg' : ''
+           rowdata = `<tr rid="row${i}" id="S${sqls[i].sql_id}" class="${((sqlTexts1 && sqlTexts1.sql_ids.length > 0) || (sqlTexts2 && sqlTexts2.sql_ids.length > 0)) ? "clickable" : ""}">${td("<b>"+sqls[i].sql_id+"</b>", bg) + td("<b>"+sqls[i].sql_db_id+"</b>", bg) + td("<b>"+sqls[i].sql_statement+"</b>", bg)}</tr>`
+           
+           
+           if ((sqlTexts1 && sqlTexts1.sql_ids.length > 0) || (sqlTexts2 && sqlTexts2.sql_ids.length > 0)) {
+               rowdata = rowdata + `
+               <tr srid="row${i}" class="hideable"><td colspan="3">
+                 ${(sqlTexts1 && sqlTexts1.sql_ids.length > 0) ? subrows1 : ""}
+                 ${(sqlTexts2 && sqlTexts2.sql_ids.length > 0) ? subrows2 : ""}
+               </td></tr>
+               `
+             }
+               
+          rows = `${rows}\n${rowdata}`
+
+         }
+    
+          
+      } else {
+          rows = `<tr><td colspan="3">Warning: No SQL full texts can be generated because of missmathing snapshot versions. Snapshot 1 version is ${snap1Version}, snapshot 2 version is ${snap2Version}.</td></tr>`
+      }
+
+      
+      
       mainHTML = `
-     <table style="width:initial">
+     <table style="width:initial" class="toggle-table">
       	   <caption>SQLs full text ${infoMessage(`By default, PostgreSQL databases truncate queries longer than 1,024 bytes. To increase the query size, change 
                  the track_activity_query_size parameter in the DB parameter group associated with your DB instance. When you 
                  change this parameter, a DB instance reboot is required.`)}</caption>
