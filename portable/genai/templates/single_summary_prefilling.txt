@@ -5,7 +5,7 @@ This output includes the following sections with comprehensive details and objec
 <h2>General information:</h2> Detailed summary of the general information section and any recommendations on instance configurations.
 <h2>Static metrics:</h2> Short summary on single_static_metrics section
 <h2>Non-def parameters:</h2> Short summary on single_nondef_params section
-<h2>Instance activity stats and top waits:</h2> Detailed summary on instance activity stats comparision and top wait events comparision from single_wait_events section, its correlation with my findings and other sections
+<h2>Instance activity stats and top waits:</h2> Detailed summary on instance activity stats comparision and top wait events comparision from single_wait_events section, its correlation with my findings and other sections. I provide the description of each wait event I mention in this section, to help you understand it.
 <h2>Additional metrics:</h2> Short summary of additional metrics comparision from single_additional_metrics section, its correlation with my findings and other sections
 <h2>Instance size:</h2> Short summary on instance size and recommendations from single_instance_recommendations section of the report
 <h2>OS metrics:</h2> Short summary of the compare between OS metrics from single_os_metrics section and its correlation with my findings and other sections

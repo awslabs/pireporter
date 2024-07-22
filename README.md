@@ -114,6 +114,9 @@ cd portable
 
 > Note: For security reasons you can also clone the repository and install `pkg` on a staging machine and build a packaged version yourself and then use it in your environment.
 
+Consider that you can execute PIreporter from any Linux host located outside of AWS. For example, the access key and secret key can be stored in the shared credentials file `~/.aws/credentials`. The AWS SDK used in PIreporter will automatically read it on load. For sure, the PIreporter policy must be attached to the IAM entity to which the access key applies.
+
+
 ##### AWS Region
 
 The AWS Region will be automatically set to the region of the hosting EC2 instance, based on instance metadata retrieved through IMDSv2. You can overwrite this by setting the AWS_REGION environment variable to the desired value.
@@ -127,6 +130,9 @@ The IAM policy pireporterPolicy.json is attached to this repository.
 The database log files will be downloaded and scanned for error messages if the `--include-logfiles` option is used.
 
 According to the policy, only instances and clusters with the Tag pireporter:allow (Key: pireporter Value: allow) can be accessed. That is why, use tagging to control which database instances can be accessed by the tool.
+
+Consider that the provided policy file can be modified by you. If you do not want to have a condition that checks for Tags, you can remove it before creating the policy or at any time afterward.
+
 
 
 ##### General considerations
