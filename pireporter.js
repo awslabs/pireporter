@@ -58,7 +58,7 @@ const optionDefinitions = [
   { name: 'end-time', type: String, description: 'Snapshot end time. Same format as for start time.'},
   { name: 'res-reserve-pct', type: Number, description: 'Specify the percentage of additional resources to reserve above the maximum metrics when generating instance type recommendations. Default is 15.'},
   { name: 'use-2sd-values', type: Boolean, description: 'To calculate the required resource for the workload, consider the average value plus 2 standard deviations (SDs). By default the maximum usage is used.'},
-  { name: 'comment', alias: 'm', type: String, description: 'Provide a comment to associate with the snapshot.'},
+  { name: 'comment', alias: 'm', type: String, description: 'Provide a comment to associate with the snapshot. When --ai-analyzes used to generate report, this comment will be provided to LLM as a hint.'},
   { name: 'ai-analyzes', alias: 'a', type: Boolean, description: 'When generating reports, include the analysis from the language model (Amazon Bedrock: Claude by Anthropic), which provides its findings, analysis, and recommendations. This option works with create report and create compare periods report.'},
   { name: 'create-report', alias: 'r', type: Boolean, description: 'Create HTML report for snapshot.'},
   { name: 'create-compare-report', alias: 'c', type: Boolean, description: 'Create compare snapshots HTML report for two snapshots.'},
