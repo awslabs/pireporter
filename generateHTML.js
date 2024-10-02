@@ -1023,8 +1023,11 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
       if (!isNaN(Number(v2))) v2 = Number(v2)
       const minus = '<span style="color: red"><b>-</b></span>'
       const plus = '<span style="color: green"><b>+</b></span>'
-      if (typeof v1 === 'string') {
-        if (v1 === '-' && v2 === '-') return '-'
+      
+      if (v1 === '-' || v2 === '-') {
+        return '-'
+      } else if (typeof v1 === 'string') {
+        if (v1 === '-' || v2 === '-') return '-'
         return (v1 === v2) ? '=' : '&#8800;'
       }
       else if (typeof v1 === 'number' || typeof v2 === 'number') {
@@ -1442,9 +1445,14 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
 
    const generateAdditionalMetricsHTML = function (snap1, snap2) {
       var rows = '',  rowdata = ''
-      for (const Key in snap1) {
-         const Metric1 = snap1[Key]
-         const Metric2 = snap2[Key] || {value: undefined}
+      
+      const allKeys = new Set([...Object.keys(snap1), ...Object.keys(snap2)]);
+      
+      for (const Key of allKeys) {
+         
+         const Metric1 = snap1[Key] || {...snap2[Key] , value: '-' }
+         const Metric2 = snap2[Key] || {value: '-'}
+         
          rowdata = td(abbr(Metric1.label, Metric1.desc)) +
                    td(Metric1.unit) +
                    td(abbr(Metric1.value, Metric1.unit)) +
