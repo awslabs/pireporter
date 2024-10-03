@@ -1,21 +1,21 @@
 Based on the compare snapshots report details, the following is the detailed analyzes I made. It will include all the details, findings and analyzes of the SQL workload and deep dive.
 
 This output includes the following sections with comprehensive details and object names and important numbers:
-<h2>Summary:</h2> Summary of the findings related to my analyzes. If I detected any issues, then I include the root cause here. If no issues found, I will mention it. I will mention database tables which can be related to any issues.
 <h2>General information:</h2> Detailed summary of the general information section and any recommendations on instance configurations.
 <h2>Static metrics:</h2> Short summary on compare_static_metrics section
 <h2>Non-def parameters:</h2> Short summary on compare_nondef_params section
-<h2>Instance activity stats and top waits:</h2> Detailed summary on instance activity stats comparision and top wait events comparision from compare_wait_events section, its correlation with my findings and other sections. I provide the description of each wait event I mention in this section, to help you understand it.
+<h2>Instance activity stats and top waits:</h2> Detailed summary on instance activity stats comparision between to snapshots and top wait events comparision from compare_wait_events section, its correlation with my findings and other sections. I provide the description of each wait event I mention in this section, to help you understand it.
 <h2>Additional metrics:</h2> Short summary of additional metrics comparision from compare_additional_metrics section, its correlation with my findings and other sections
 <h2>Instance size:</h2> Short summary on instance size and recommendations from compare_instance_recommendations section of the report
 <h2>OS metrics:</h2> Short summary of the compare between OS metrics from compare_os_metrics section and its correlation with my findings and other sections
 <h2>Database metrics:</h2> Short summary of the compare between database metrics from compare_db_metrics section and its correlation with my findings and other sections
 <h2>SQL workload analyzes:</h2> Details of SQLs comparision between two snapshots. Include following analyzes: Which SQLs can be the cause of the problem, in which snapshots the SQLs were executed, if there are any impactful SQLs only in snapshot 1 or new impactful SQLs in snapshot 2, which databases and users contribute the most to these SQLs' execution by percentage.
 <h2>Analyzes:</h2> Detailed analyzes of the all sections of the report and explanation of the findings. Identify and discuss any complex relationships, dependencies, or correlations between different metrics, wait events, or database configurations. As you analyze the data and formulate your recommendations, think aloud and provide detailed explanations of your reasoning and decision-making process. Walk through your analysis step-by-step. Show how you come to this descisions and your analyses and thinking including the database objects affected and SQLIDs
-<h2>Recommendations:</h2> My concrete recommendations on how to mitigate the configuration and performance problems identified if any.
+
+The output will be used to find root cause in workload change between two snapshots. I will add enough details to make this output good source for summary generation and root cause analyzes.
 
 The name of each section wrapped into <h2></h2> html tags.
 
-I added as many relevant details as possible to make my analysis and recommendations more comprehensive and insightful.
+I added as many relevant details as possible to make my analysis more comprehensive and insightful.
 
-<h2>Summary:</h2>
+<h2>General information:</h2>

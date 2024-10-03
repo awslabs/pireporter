@@ -57,7 +57,7 @@ class LLMGenerator {
     this.snap1_comment = snap1.comment || 'No comment';
     this.snap2_comment = snap2?.comment || 'No comment';
     
-    if (this.snap1.engine === 'aurora-postgresql') {
+    if (this.snap1.generalInformation.Engine === 'aurora-postgresql') {
        if (fs.existsSync('./genai/knowledge_base/events_primary.json')) {
           this.EventsPrimary = JSON.parse(fs.readFileSync('./genai/knowledge_base/events_primary.json', 'utf8'))
        } else {
@@ -103,8 +103,8 @@ class LLMGenerator {
   }
   
   #prepareComparePrompt(prompt) {
-     var p = prompt.replace('{{ snap1_engine }}', this.#engines[this.snap1.engine]);
-     p = p.replace('{{ snap2_engine }}', this.#engines[this.snap2.engine]);
+     var p = prompt.replace('{{ snap1_engine }}', this.#engines[this.snap1.generalInformation.Engine] + ' ' + ((this.snap1.generalInformation.DBInstanceClass === 'db.serverless') ? 'serverless deployment' : 'provisioned instance'));
+     p = p.replace('{{ snap2_engine }}', this.#engines[this.snap2.generalInformation.Engine] + ' ' + ((this.snap2.generalInformation.DBInstanceClass === 'db.serverless') ? 'serverless deployment' : 'provisioned instance'));
      p = p.replace('{{ snap1_region }}', this.snap1.region);
      p = p.replace('{{ snap2_region }}', this.snap2.region);
      p = p.replace('{{ snap1_start }}', this.snap1.startTime);
@@ -117,7 +117,7 @@ class LLMGenerator {
   }
   
   #prepareSinglePrompt(prompt) {
-     var p = prompt.replace('{{ engine }}', this.#engines[this.snap1.engine]);
+     var p = prompt.replace('{{ engine }}', this.#engines[this.snap1.generalInformation.Engine] + ' ' + ((this.snap1.generalInformation.DBInstanceClass === 'db.serverless') ? 'serverless deployment' : 'provisioned instance'));
      p = p.replace('{{ region }}', this.snap1.region);
      p = p.replace('{{ start }}', this.snap1.startTime);
      p = p.replace('{{ end }}', this.snap1.endTime);
@@ -127,7 +127,7 @@ class LLMGenerator {
   
   #getKnowledge(engine) {
     var knowledge;
-    if (this.snap1.engine === "aurora-postgresql") {
+    if (this.snap1.generalInformation.Engine === "aurora-postgresql") {
       if (fs.existsSync('./genai/knowledge_base/aurora-postgresql.txt')) {
            knowledge = fs.readFileSync('./genai/knowledge_base/aurora-postgresql.txt', 'utf8');
          } else {
@@ -156,13 +156,13 @@ class LLMGenerator {
     
     var knowledge;
     if (this.type === 'single_snapshot') {
-       knowledge = `Knowledge related to ${this.#engines[this.snap1.engine]}:` + '\n' + this.#getKnowledge(this.snap1.engine);
+       knowledge = `Knowledge related to ${this.#engines[this.snap1.generalInformation.Engine]}:` + '\n' + this.#getKnowledge(this.snap1.generalInformation.Engine);
     
     } else {
-       if (this.snap1.engine === this.snap2.engine) {
-         knowledge = `Knowledge related to ${this.#engines[this.snap1.engine]}:` + '\n' + this.#getKnowledge(this.snap1.engine);
+       if (this.snap1.generalInformation.Engine === this.snap2.generalInformation.Engine) {
+         knowledge = `Knowledge related to ${this.#engines[this.snap1.generalInformation.Engine]}:` + '\n' + this.#getKnowledge(this.snap1.generalInformation.Engine);
        } else {
-         knowledge = `Knowledge related to ${this.#engines[this.snap1.engine]}:` + '\n' + this.#getKnowledge(this.snap1.engine) + '\n' + `Knowledge related to ${this.#engines[this.snap2.engine]}:` + '\n' + this.#getKnowledge(this.snap2.engine);
+         knowledge = `Knowledge related to ${this.#engines[this.snap1.generalInformation.Engine]}:` + '\n' + this.#getKnowledge(this.snap1.generalInformation.Engine) + '\n' + `Knowledge related to ${this.#engines[this.snap2.generalInformation.Engine]}:` + '\n' + this.#getKnowledge(this.snap2.generalInformation.Engine);
        } 
       
     }
@@ -178,20 +178,28 @@ class LLMGenerator {
     
     if (this.type === 'single_snapshot') {
        prompt = this.#prepareSinglePrompt(prompt);
+       var templateGrandSummary = fs.readFileSync(`./genai/templates/single_grand_summary.txt`, 'utf8');
+       var promptGrandSummary = this.#prepareSinglePrompt(templateGrandSummary);
     } else {
        prompt = this.#prepareComparePrompt(prompt);
+       var templateGrandSummary = fs.readFileSync(`./genai/templates/compare_grand_summary.txt`, 'utf8');
+       var promptGrandSummary = this.#prepareComparePrompt(templateGrandSummary);
     }
     
     
     switch (true) {
       case section.endsWith('_general_info'):
+        prompt = prompt.replace('{{ knowledge }}', knowledge);
       case section.endsWith('_nondef_params'):
+        prompt = prompt.replace('{{ knowledge }}', knowledge);
       case section.endsWith('_static_metrics'):
       case section.endsWith('_additional_metrics'):
+        prompt = prompt.replace('{{ knowledge }}', knowledge);
       case section.endsWith('_instance_recommendations'):
         prompt = prompt.replace('{{ data }}', payload.data || '');
         break;
       case section.endsWith('_os_metrics'):
+        prompt = prompt.replace('{{ knowledge }}', knowledge);
       case section.endsWith('_db_metrics'):
         prompt = prompt.replace('{{ knowledge }}', knowledge);
         prompt = prompt.replace('{{ data }}', payload.data || '');
@@ -233,6 +241,7 @@ class LLMGenerator {
       console.log(error, { requestId, cfId, extendedRequestId });
     }
     var result = processBody(response.body);
+    
     if (section.endsWith('_summary') && result.stopReason === "max_tokens") {
        command = getBedrockCommand(system_prompt, null, [
             {"role": "user", "content": [{"type": "text", "text": prompt}]},
@@ -242,7 +251,7 @@ class LLMGenerator {
        try {
          var response2 = await client.send(command);
          result = processBody(response2.body);
-         
+           
          /*const respBodyBuf = Buffer.from(response2.body);
          const respBody = JSON.parse(respBodyBuf.toString());
          const text = respBody.content[0].text;
@@ -252,8 +261,40 @@ class LLMGenerator {
          console.log(error, { requestId, cfId, extendedRequestId });
        }
   
-       
     }
+    
+      
+    //#ag
+    if (section.endsWith('_summary')) {
+      
+         var sectionSummaries = "<h2>General information:</h2>" + this.#sectionsBuffer[section]
+      
+         promptGrandSummary = promptGrandSummary.replace('{{ knowledge }}', knowledge);
+         promptGrandSummary = promptGrandSummary.replace('{{ data }}', sectionSummaries);
+         
+         console.log('PROMP GRAND SUMMARY:', promptGrandSummary)
+         
+         command = getBedrockCommand(system_prompt, null, [
+            {"role": "user", "content": [{"type": "text", "text": promptGrandSummary}]},
+            {"role": "assistant", "content": [{"type": "text", "text": "<h2>Summary:</h2>"}]}
+            ]
+          )
+         
+         try {
+           var response3 = await client.send(command);
+           var result3 = processBody(response3.body);
+           
+           var grandResult = result3.text + sectionSummaries
+           this.#sectionsBuffer[section] = grandResult;
+           
+         } catch (error) {
+           const { requestId, cfId, extendedRequestId } = error.$metadata;
+           console.log(error, { requestId, cfId, extendedRequestId });
+         }
+         
+         return {...result3, text: grandResult}
+    }
+    
     
     return result
     

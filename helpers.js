@@ -423,8 +423,7 @@ const getWriteThroughput = async function (Identifier, cw, snapshotRange) {
     reject(err)
   }
   
-   
-   //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
+  //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
    
    resolve(MetricValues.MetricDataResults[0].Values)  
 
@@ -744,6 +743,7 @@ rds.describeDBInstances(params, async function(err, data) {
   
   } else {
   
+  
     var DBInstanceDetails = data.DBInstances[0];
     // console.log(JSON.stringify(DBInstanceDetails, null, 2))
     var { DBInstanceIdentifier,
@@ -767,7 +767,6 @@ rds.describeDBInstances(params, async function(err, data) {
           EnabledCloudwatchLogsExports,
           DeletionProtection
     } = DBInstanceDetails;
-    
     
           
     //console.log('Output', JSON.stringify(data.DBInstances, null, 2));
@@ -811,8 +810,9 @@ rds.describeDBInstances(params, async function(err, data) {
       console.error(err)
     }
 
-    let NetworkMaxBandwidthMbps = NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.PeakBandwidthInGbps}, 0) * 1000;
-    let NetworkBaselineBandwidthMbps = NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.BaselineBandwidthInGbps}, 0) * 1000;
+    
+    let NetworkMaxBandwidthMbps = (DBInstanceClass === 'db.serverless') ? undefined : NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.PeakBandwidthInGbps}, 0) * 1000;
+    let NetworkBaselineBandwidthMbps = (DBInstanceClass === 'db.serverless') ? undefined : NetworkInfo.NetworkCards.reduce((a, v) => {return a + v.BaselineBandwidthInGbps}, 0) * 1000;
     
     var GeneralInformation = {
           DBInstanceIdentifier,

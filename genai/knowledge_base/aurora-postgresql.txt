@@ -3,6 +3,21 @@ tup_returned: Represents data fetched from both sequential and index scans (bitm
 tup_fetched: Represents data fetched specifically from index scans (bitmap index scans). A high value relative to tup_returned could suggest suboptimal indexing or query plans.
 db.SQL.logical_reads: Total number of blocks read from both cache and disk.
 
+Aurora PostgreSQL has two types of instances: 1) Provisioned one, when DBInstanceClass is set to specific provisioned EC2 instance class; 2) Serverless deployment when DBInstanceClass is set to "db.serverless".
+Aurora Serverless is an on-demand, auto-scaling configuration for Amazon Aurora that automatically adjusts database capacity based on application demand. Here's an overview of how Aurora Serverless works:
+    Scalability:
+        Scales continuously and rapidly in fine-grained increments
+        Can handle hundreds of thousands of transactions in a fraction of a second
+        Scales from as low as 0.5 Aurora Capacity Units (ACUs) up to 128 ACUs
+    Capacity Management:
+        You specify a minimum and maximum capacity range for your cluster
+        Aurora automatically adjusts capacity within this range based on workload
+        Eliminates the need for manual capacity planning and management
+    Use Cases:
+        Ideal for variable and unpredictable workloads
+        Well-suited for multi-tenant applications, development/testing, and new applications
+Aurora Serverless simplifies database management by automating capacity adjustments, potentially reducing operational overhead and costs while maintaining the performance and reliability expected from Aurora databases.
+
 Summary of the key points about tuning Aurora PostgreSQL:
 - In case of Aurora, ignore Mulit-AZ configuration value, its not relevant for Aurora. If Aurora has read only instances in different region, then it is a great high availability solution for fast failover.
 - When you consider the wait events, always make attention on the impact of this event (the percent from DB Time). Even if wait event exists, it doesnt mean that it has negative effect. It can have very low impact. For example if IPC:BufferIO: 0.45% of DB time, then it is very low impact event, or if IPC:ExecuteGather: 0.05% of DB time, then it is negligibly low impact and can be ignored.
@@ -17,3 +32,4 @@ Summary of the key points about tuning Aurora PostgreSQL:
 - Work memory areas are used for sorts, hashes, index creation, etc. Setting work_mem appropriately prevents excessive disk spilling.
 - WAL logging is key for recovery and reducing disk I/O. Setting wal_level controls how much is logged.
 - Autovacuum automates vacuum/analyze to reclaim space and update stats. But it can cause I/O spikes if not tuned well.
+- Consider that CPU in wait events doesnt mean that processes was waiting for CPU resources, it means that processes was on CPU, actively using CPU doing their job.
