@@ -161,6 +161,7 @@ const counterMetrics = async function (generalInformation, options) {
   
   
   const calc2SDValue = function (numbers) {
+    
     // calculate mean
     const n = numbers.length;
     let sum = 0;
@@ -183,7 +184,7 @@ const counterMetrics = async function (generalInformation, options) {
   
   const get2SDValue = function (dataSet, metric) {
     var dataPointsArr = dataSet.filter(object => object.Key.Metric.startsWith(metric+'.'))
-
+    
     const getValues = function (arr) {
       return arr.map(dataPoint => dataPoint.Value)
     }
@@ -224,6 +225,36 @@ const counterMetrics = async function (generalInformation, options) {
   
   
   var OS_MetricList = []
+  
+  
+  
+  if (generalInformation.DBInstanceClass === 'db.serverless') {
+    try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          // OS Metrics
+          {Metric: "os.general.acuUtilization.avg"},{Metric: "os.general.acuUtilization.max"},{Metric: "os.general.acuUtilization.min"},
+          {Metric: "os.general.numVCPUs.avg"},{Metric: "os.general.numVCPUs.max"},{Metric: "os.general.numVCPUs.min"},
+          {Metric: "os.general.serverlessDatabaseCapacity.avg"},{Metric: "os.general.serverlessDatabaseCapacity.max"},{Metric: "os.general.serverlessDatabaseCapacity.min"}
+        ]
+      });
+      
+      //console.log('OS Metrics', PI_result)
+      
+      OS_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }     
+  
+  }
+  
+  
   
   try {
       var PI_result = await pi.getResourceMetrics({
@@ -549,7 +580,9 @@ const counterMetrics = async function (generalInformation, options) {
         EndTime: endTime,
         PeriodInSeconds: pseconds,
         MetricQueries: [
-          {Metric: "os.general.numVCPUs.max"}, {Metric: "os.memory.total.max"}, {Metric: "os.swap.total.max"}
+          {Metric: "os.general.numVCPUs.max"},{Metric: "os.general.numVCPUs.min"},{Metric: "os.general.numVCPUs.avg"}, 
+          {Metric: "os.memory.total.max"},{Metric: "os.memory.total.min"},  {Metric: "os.memory.total.avg"}, 
+          {Metric: "os.swap.total.max"}, {Metric: "os.swap.total.min"}, {Metric: "os.swap.total.avg"}
         ]
       });
       
@@ -557,7 +590,15 @@ const counterMetrics = async function (generalInformation, options) {
         reject(error)
     }
     
-    var staticMetrics = {vCPUs: [], memory: [], swap: []}
+    var staticMetrics
+    
+    if (generalInformation.DBInstanceClass === 'db.serverless') {
+       staticMetrics = {}
+    
+      
+    } else {
+      
+    staticMetrics = {vCPUs: [], memory: [], swap: []}
     
     PI_static_metrics.MetricList.forEach(Metric => {
       var uniquePoints = [Metric.DataPoints[0]]
@@ -577,12 +618,14 @@ const counterMetrics = async function (generalInformation, options) {
       }
       
     })
-    
+
+    }    
     //console.log('Static metrics', JSON.stringify(staticMetrics, null, 2))
     
     
   
   var OS_Metrics = {
+    general: {name: "General", metrics: []},
     cpuUtilization: {name: "CPU Utilization", metrics: []},
     diskIO: {name: "Disk IO", metrics: []},
     fileSys: {name: "File system", metrics: []},
@@ -597,12 +640,19 @@ const counterMetrics = async function (generalInformation, options) {
   var OS_MetricsMetdata = PIMetricsMetadata.Metrics.filter(meta => meta.Metric.startsWith('os.'))
   
   //var OS_MetricsExcludeList = ['os.fileSys.maxFiles', 'os.memory.hugePagesSize', 'os.memory.hugePagesTotal', 'os.memory.outOfMemoryKillCount', 'os.memory.total', 'os.swap.total']
-  var OS_MetricsExcludeList = ['os.fileSys.maxFiles', 'os.memory.hugePagesSize', 'os.memory.total', 'os.swap.total']
+  if (generalInformation.DBInstanceClass === 'db.serverless') {
+     var OS_MetricsExcludeList = ['os.fileSys.maxFiles', 'os.memory.hugePagesSize', 'os.general.maxConfiguredAcu', 'os.general.minConfiguredAcu']
+  } else {
+     var OS_MetricsExcludeList = ['os.fileSys.maxFiles', 'os.memory.hugePagesSize', 'os.memory.total', 'os.swap.total']
+  }
   
   for (let i = 0; i < OS_MetricsMetdata.length; i++) {
     
     var cm = OS_MetricsMetdata[i]
     switch (true) {
+      case cm.Metric.startsWith("os.general") && !OS_MetricsExcludeList.includes(cm.Metric):
+        OS_Metrics.general.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(OS_MetricList, cm.Metric)})
+        break;
       case cm.Metric.startsWith("os.cpuUtilization") && !OS_MetricsExcludeList.includes(cm.Metric):
         OS_Metrics.cpuUtilization.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(OS_MetricList, cm.Metric)})
         break;
@@ -759,7 +809,7 @@ const counterMetrics = async function (generalInformation, options) {
     
     
 
-  var DB_Aurora_Metrics = {
+  var DB_Metrics = {
     SQL: {name: "SQL", metrics: []},
     Cache: {name: "Cache", metrics: []},
     Checkpoint: {name: "Checkpoint", metrics: []},
@@ -782,34 +832,34 @@ const counterMetrics = async function (generalInformation, options) {
     var cm = DB_MetricsMetdata[i]
     switch (true) {
       case cm.Metric.startsWith("db.SQL") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.SQL.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.SQL.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.Cache") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.Cache.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.Cache.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.Checkpoint") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.Checkpoint.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.Checkpoint.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.Concurrency") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.Concurrency.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.Concurrency.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.IO") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.IO.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.IO.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.State") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.State.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.State.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.Temp") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.Temp.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.Temp.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.Transactions") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.Transactions.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.Transactions.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.User") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.User.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.User.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.WAL") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Aurora_Metrics.WAL.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+        DB_Metrics.WAL.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       default:
         break;
@@ -845,7 +895,7 @@ const counterMetrics = async function (generalInformation, options) {
       var cIdx = correlationIndex(MetricLists[i].DataPoints, MetricLists[y].DataPoints)
       var cGroup1 = inCGroup(MetricLists[i].Key.Metric)
       var cGroup2 = inCGroup(MetricLists[y].Key.Metric)
-      if (cIdx >= conf.metricsCorrelationThreshold) {
+      if (cIdx >= conf.metricsCorrelationThreshold.value) {
         if (cGroup1 === 'n' && cGroup2 === 'n') {
           correlations[Math.max(...Object.keys(correlations))+1] = [MetricLists[i].Key.Metric, MetricLists[y].Key.Metric]
         } else if ((cGroup1 !== 'n' && cGroup2 === 'n') || (cGroup1 === 'n' && cGroup2 !== 'n')) {
@@ -862,7 +912,7 @@ const counterMetrics = async function (generalInformation, options) {
   }
   
   delete correlations['0']
-  correlations['Threshold'] = conf.metricsCorrelationThreshold
+  correlations['Threshold'] = conf.metricsCorrelationThreshold.value
   
   
   var cwData = await getCWMetrics(generalInformation)
@@ -907,8 +957,17 @@ const counterMetrics = async function (generalInformation, options) {
     var walThreadAvg = writeThroughputAvg * (generalInformation.NumberOfOtherInstances + numberRemoteClusters)
   } else {
     var writeThroughput = await getWriteThroughput(generalInformation.WriterInstanceIdentifier, cw, {startTime, endTime, periodInSeconds})  
-    var walThread = writeThroughput
-    var walThreadAvg = calculateAverage(writeThroughput)
+    if (writeThroughput.length === 0) {
+      console.log(`Looks like the current writer instance ${generalInformation.WriterInstanceIdentifier} at the provided snapshot period was not a writer, will try to consider ${generalInformation.DBInstanceIdentifier} as the writer to calculate instance network throughput.`)
+      var writeThroughput = cwData.MetricDataResults.find(v => v.Id === 'writeThroughput').Values
+      var writeThroughputAvg = calculateAverage(writeThroughput)
+      var walThread = calculateArrayMultiply(writeThroughput, generalInformation.NumberOfOtherInstances + numberRemoteClusters)
+      var walThreadAvg = writeThroughputAvg * (generalInformation.NumberOfOtherInstances + numberRemoteClusters)
+      
+    } else {
+      var walThread = writeThroughput
+      var walThreadAvg = calculateAverage(writeThroughput)
+    }
   }
   
   
@@ -941,19 +1000,19 @@ const counterMetrics = async function (generalInformation, options) {
                            unit: 'Percent',
                            label: 'Buffer cache hit ratio', 
                            desc: `Buffer cache hit ratio`},
-    AuroraEstimatedSharedMemoryUsedAvgMB: {value: (auroraEstimatedSharedMemoryBytesAvg / 1024 / 1024).toFixed(2),
+    AuroraEstimatedSharedMemoryUsedAvgMB: (generalInformation.DBInstanceClass === 'db.serverless') ? undefined : {value: (auroraEstimatedSharedMemoryBytesAvg / 1024 / 1024).toFixed(2),
                            unit: 'MB',
                            label: 'Average estimated buffer pool memory used', 
                            desc: `The average value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.`},
-    AuroraEstimatedSharedMemoryUsedMaxMB: {value: (auroraEstimatedSharedMemoryBytesMax / 1024 / 1024).toFixed(2),
+    AuroraEstimatedSharedMemoryUsedMaxMB: (generalInformation.DBInstanceClass === 'db.serverless') ? undefined : {value: (auroraEstimatedSharedMemoryBytesMax / 1024 / 1024).toFixed(2),
                            unit: 'MB',
                            label: 'Max estimated buffer pool memory used', 
                            desc: `The maximum value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.`},
-    BlocksReadToLogicalReads: {value: (DB_Aurora_Metrics.IO.metrics.find(m => m.metric === 'db.IO.blks_read').sum / DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.logical_reads').sum * 100).toFixed(2),
+    BlocksReadToLogicalReads: {value: (DB_Metrics.IO.metrics.find(m => m.metric === 'db.IO.blks_read').sum / DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.logical_reads').sum * 100).toFixed(2),
                                unit: 'Percent',
                                label: 'Pct disk reads', 
                                desc: 'The percentage of disk reads that come from logical reads (all reads).'},
-    TupReturnedToFetched: {value: (DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_returned').sum / DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_fetched').sum).toFixed(0),
+    TupReturnedToFetched: {value: (DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_returned').sum / DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_fetched').sum).toFixed(0),
                            unit: 'Ratio',
                            label: 'Tuples returned to fetched', 
                            desc: 'The number of tuples returned divided by the number of tuples fetched. High values can indicate intensive full and range scans or a high count of dead tuples'},
@@ -965,7 +1024,7 @@ const counterMetrics = async function (generalInformation, options) {
                             unit: 'MB/s',
                            label: 'Estimated network throughput average', 
                            desc: `The estimated average network throughput of the instance for the snapshot period. It includes user traffic, WAL stream to other instances or from master instance and Aurora storage throughput.`},                           
-    actualTrafficPercentage: {value: networkLimits.trafficToMaxPct.toFixed(2),
+    actualTrafficPercentage: (generalInformation.DBInstanceClass === 'db.serverless') ? undefined : {value: networkLimits.trafficToMaxPct.toFixed(2),
                             unit: 'Percent',
                            label: 'Pct network traffic to max limit', 
                            desc: `The percentage of actual estimated max network traffic compared to the maximum available network throughput of the instance. Estimated netwrok traffic for the snapshot period was ${(estimatedNetworkThroughputMax / 1024 / 1024).toFixed(2)} MB/s and the maximum network throughput for this instance class is ${networkLimits.networkMaxMBps} MB/s. ${networkLimits.burstable ? 'Consider that this instace class has a burstable network throughput.' : ''}`},
@@ -983,7 +1042,7 @@ const counterMetrics = async function (generalInformation, options) {
                             unit: 'MB/s',
                            label: 'Avg local storage throughput', 
                            desc: `The average local storage throughput observed during snapshot period. For instances without optimized reads, it is EBS storage.`},
-    throughputToLocalStorageMaxToMaxEBSThroughput: {value: (localStorageThroughputMaxMB * 100 / (generalInformation.EC2Details.EBSMaximumBandwidthInMbps/8)).toFixed(2),
+    throughputToLocalStorageMaxToMaxEBSThroughput: (generalInformation.DBInstanceClass === 'db.serverless') ? undefined : {value: (localStorageThroughputMaxMB * 100 / (generalInformation.EC2Details.EBSMaximumBandwidthInMbps/8)).toFixed(2),
                             unit: 'Percent',
                            label: 'Pct max local storage througput to max EBS throughput', 
                            desc: `The percent of maximum available EBS throughput, which is ${(generalInformation.EC2Details.EBSMaximumBandwidthInMbps/8).toFixed(2)} MBps, utilized by actual maximum throughput during snapshot period.`},
@@ -992,17 +1051,17 @@ const counterMetrics = async function (generalInformation, options) {
                            label: 'Pct max local storage througput to baseline EBS throughput', 
                            desc: `The percent of baseline EBS throughput, which is ${(generalInformation.EC2Details.EBSBaselineBandwidthInMbps/8).toFixed(2)} MBps, utilized by actual maximum throughput during snapshot period.`
                              } : undefined,
-    AAStoBackends: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Label.replace(/,/g, '')) / DB_Aurora_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg * 100).toFixed(2),
+    AAStoBackends: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Label.replace(/,/g, '')) / DB_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg * 100).toFixed(2),
                            unit: 'Percent',
                            label: 'Pct active sessions to connections', 
-                           desc: `Percent of average active sessions to average backends (connections). Average number of backends for the snapshot period was ${DB_Aurora_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg}`},
-    numBackendsToMax: {value: (DB_Aurora_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').max / max_connections * 100).toFixed(2),
+                           desc: `Percent of average active sessions to average backends (connections). Average number of backends for the snapshot period was ${DB_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').avg}`},
+    numBackendsToMax: {value: (DB_Metrics.User.metrics.find(m => m.metric === 'db.User.numbackends').max / max_connections * 100).toFixed(2),
                            unit: 'Percent',
                            label: 'Pct max backends to max_connections', 
                            desc: `Percent of maximum backends (connections) in snapshot period to max_connections. Estimated max_connections for this instance is ${max_connections}`},
-    numFetchedToDML: {value: (DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_fetched').sum / (DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_inserted').sum +
-                                                                                                                DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_deleted').sum +
-                                                                                                                DB_Aurora_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_updated').sum)).toFixed(0),
+    numFetchedToDML: {value: (DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_fetched').sum / (DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_inserted').sum +
+                                                                                                                DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_deleted').sum +
+                                                                                                                DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.tup_updated').sum)).toFixed(0),
                            unit: 'Ratio',
                            label: 'Tuples fetched to DMLs', 
                            desc: `Fetched tuples / DMLs (inserted + updated + deleted)`},
@@ -1228,10 +1287,10 @@ const counterMetrics = async function (generalInformation, options) {
   
   
   
-  // Works only if snapshot period is greater or equal to 24 hours
-  if (periodInSeconds >= 300) {
+  // Works only if snapshot period is greater or equal to 24 hours and non-serverless
+  if (periodInSeconds >= 300 && generalInformation.DBInstanceClass !== 'db.serverless') {
     try {
-      var suggestInstance = await getSuggestInstance(generalInformation, DB_Aurora_Metrics, OS_Metrics, AdditionalMetrics, staticMetrics);
+      var suggestInstance = await getSuggestInstance(generalInformation, DB_Metrics, OS_Metrics, AdditionalMetrics, staticMetrics);
     } catch (err) { reject(err) }
   }
   
@@ -1241,7 +1300,7 @@ const counterMetrics = async function (generalInformation, options) {
   //console.log('metric list', correlations)
   //console.log('Output', 'PI_result', OS_MetricList);
   //console.log('Output', 'PI_result length', DB_Aurora_MetricList.length);
-  //console.log('Output', 'PI_result', JSON.stringify(DB_Aurora_Metrics, null, 2))
+  //console.log('Output', 'PI_result', JSON.stringify(DB_Metrics, null, 2))
   //console.log('Output', 'PI_result', getMetricData(OS_MetricList, 'os.cpuUtilization.total'));
   //console.log('Output', 'PI_result', getMetricData(OS_MetricList, 'os.diskIO.rdstemp.readKb'));
   
@@ -1252,7 +1311,7 @@ const counterMetrics = async function (generalInformation, options) {
   returnObject['AdditionalMetrics'] = AdditionalMetrics
   returnObject['Correlations'] = correlations
   returnObject['OSMetrics'] = OS_Metrics
-  returnObject['DBAuroraMetrics'] = DB_Aurora_Metrics
+  returnObject['DBMetrics'] = DB_Metrics
   
   resolve(returnObject);
     

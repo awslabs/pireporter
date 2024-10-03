@@ -15,6 +15,7 @@
 
 global.version = "2.1.0"
 
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -24,11 +25,12 @@ const commandLineUsage =  require('command-line-usage');
 const { RDS } = require("@aws-sdk/client-rds");
 const { EC2 } = require("@aws-sdk/client-ec2");
 const { PI } = require("@aws-sdk/client-pi");
-const { generateHTMLReport, generateCompareHTMLReport } = require("./generateHTML");
+const { generateHTMLReport, generateCompareHTMLReport } = require('./generateHTML');
 
 const { generateDateRanges,
         getGeneralInformation,
-        convertDate
+        convertDate,
+        getCurrentRegion
       } = require('./helpers');
 
 
@@ -492,29 +494,23 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName}, options, snapshotRan
   
     
     if (options["create-snapshot"]) {
-       
-    
+
        if (GeneralInformation.Engine === 'aurora-postgresql') {
          
-         if (GeneralInformation.DBInstanceClass === 'db.serverless') {
-            console.log('In progress')
-            process.exit()
-         } else {
-            
            var { generateSnapshot } = require('./aurorapg.js') 
-         }
          
        } else {
            console.log('Not supported engine')
            process.exit()
        }
-       
+   
+  
        var snapshotData = await generateSnapshot(GeneralInformation, options, snapshotRange);
    
        var pi_snapshot = {
            $META$: {
               version: global.version,
-              region: myRegion,
+              region: await getCurrentRegion(),
               startTime: snapshotData.WaitEvents.AlignedStartTime,
               endTime: snapshotData.WaitEvents.AlignedEndTime,
               instanceName: InstanceName,

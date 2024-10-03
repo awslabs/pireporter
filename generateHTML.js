@@ -271,7 +271,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
        var genAI = new LLMGenerator('single_snapshot', {region: snapshotObject.$META$.region, 
                                                           startTime: snapshotObject.$META$.startTime, 
                                                           endTime: snapshotObject.$META$.endTime, 
-                                                          engine: snapshotObject.GeneralInformation.Engine, 
+                                                          generalInformation: snapshotObject.GeneralInformation, 
                                                           comment: snapshotObject.$META$.commandLineOptions.comment || undefined})
     }
 
@@ -361,7 +361,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
   </table>
   `
 
-    var staticMetricsHTML = `
+    var staticMetricsHTML = (snapshotObject.GeneralInformation.DBInstanceClass === 'db.serverless') ? '' : `
   <table style="width:initial" class="no-shadow">
    	   <caption>EC2 stats</caption>
    	   ${tr(td('Stat')+td('Value'), 'table-header')}
@@ -549,9 +549,9 @@ const generateHTMLReport = async function(snapshotObject, genai) {
 
 
    var additionalMetricsHTML = generateAdditionalMetricsHTML(snapshotObject.Metrics.AdditionalMetrics)
-   var instanceRecommendationsHTML = generateInstanceRecommendationsHTML(snapshotObject.Metrics.WorkloadAnalyses)
+   var instanceRecommendationsHTML = (snapshotObject.GeneralInformation.DBInstanceClass === 'db.serverless') ? '' : generateInstanceRecommendationsHTML(snapshotObject.Metrics.WorkloadAnalyses)
    var OSMetricsHTML = generateMetricsHTML(snapshotObject.Metrics.OSMetrics, 'OS')
-   var DBMetricsHTML = generateMetricsHTML(snapshotObject.Metrics.DBAuroraMetrics, 'DB')
+   var DBMetricsHTML = generateMetricsHTML(snapshotObject.Metrics.DBMetrics, 'DB')
 
     var metricsHTML = `
   <table style="width:initial" class="no-border">
@@ -815,9 +815,9 @@ const generateHTMLReport = async function(snapshotObject, genai) {
        var resp = await genAI.generateParallel([{section: 'single_general_info', data: generalInformationHTML},
                                                 {section: 'single_nondef_params', data: nonDefParameters},
                                                 {section: 'single_wait_events', data: instanceActivityHTML + "\n" + waitEventsHTML, events: WaitEvents},
-                                                {section: 'single_static_metrics', data: staticMetricsHTML},
+                                                {section: 'single_static_metrics', data: (snapshotObject.GeneralInformation.DBInstanceClass === 'db.serverless') ? 'This section is not relevant because instance is serverless. Skip this section of the report.' : staticMetricsHTML},
                                                 {section: 'single_additional_metrics', data: additionalMetricsHTML},
-                                                {section: 'single_instance_recommendations', data: instanceRecommendationsHTML},
+                                                {section: 'single_instance_recommendations', data: (snapshotObject.GeneralInformation.DBInstanceClass === 'db.serverless') ? 'This section is not relevant because instance is serverless. Skip this section of the report.' : instanceRecommendationsHTML},
                                                 {section: 'single_os_metrics', data: OSMetricsHTML},
                                                 {section: 'single_db_metrics', data: DBMetricsHTML}
                                        ]);
@@ -981,12 +981,12 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
        var genAI = new LLMGenerator('compare_snapshots', {region: snapshotObject1.$META$.region, 
                                                           startTime: snapshotObject1.$META$.startTime, 
                                                           endTime: snapshotObject1.$META$.endTime, 
-                                                          engine: snapshotObject1.GeneralInformation.Engine, 
+                                                          generalInformation: snapshotObject1.GeneralInformation, 
                                                           comment: snapshotObject1.$META$.commandLineOptions.comment || undefined}, 
                                                          {region: snapshotObject2.$META$.region, 
                                                           startTime: snapshotObject2.$META$.startTime, 
                                                           endTime: snapshotObject2.$META$.endTime, 
-                                                          engine: snapshotObject2.GeneralInformation.Engine, 
+                                                          generalInformation: snapshotObject2.GeneralInformation, 
                                                           comment: snapshotObject2.$META$.commandLineOptions.comment || undefined})
     }
     
@@ -1242,7 +1242,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
     /// Metrics B /////
 
 
-    var staticMetricsHTML1 = `
+    var staticMetricsHTML1 = (snapshotObject1.GeneralInformation.DBInstanceClass === 'db.serverless') ? '' : `
   <table style="width:initial" class="no-shadow">
    	   <caption>Snapshot 1 EC2 stats</caption>
    	   ${tr(td('Stat')+td('Value'), 'table-header')}
@@ -1252,7 +1252,7 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
   </table>
   `
 
-    var staticMetricsHTML2 = `
+    var staticMetricsHTML2 = (snapshotObject2.GeneralInformation.DBInstanceClass === 'db.serverless') ? '' : `
   <table style="width:initial" class="no-shadow s2-r-bg">
         <caption class="s2-c-color">Snapshot 2 EC2 stats</caption>
         ${tr(td('Stat') + td('Value'), 'table-header s2-h-color')}
@@ -1562,14 +1562,14 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
 
    var instanceRecommendationsHTML = `<table class="container-table">
    <tr>
-  <td>${generateInstanceRecommendationsHTML(snapshotObject1.Metrics.WorkloadAnalyses, 1)}</td></tr>
-  <tr><td>${generateInstanceRecommendationsHTML(snapshotObject2.Metrics.WorkloadAnalyses, 2)}</td></tr>
+  <td>${(snapshotObject1.GeneralInformation.DBInstanceClass === 'db.serverless') ? '' : generateInstanceRecommendationsHTML(snapshotObject1.Metrics.WorkloadAnalyses, 1)}</td></tr>
+  <tr><td>${(snapshotObject2.GeneralInformation.DBInstanceClass === 'db.serverless') ? '' : generateInstanceRecommendationsHTML(snapshotObject2.Metrics.WorkloadAnalyses, 2)}</td></tr>
   </table>`
 
 
   var additionalMetricsHTML = generateAdditionalMetricsHTML(snapshotObject1.Metrics.AdditionalMetrics, snapshotObject2.Metrics.AdditionalMetrics)
   var OSMetricsHTML = generateMetricsHTML(snapshotObject1.Metrics.OSMetrics, snapshotObject2.Metrics.OSMetrics, 'OS')
-  var DBMetricsHTML = generateMetricsHTML(snapshotObject1.Metrics.DBAuroraMetrics, snapshotObject2.Metrics.DBAuroraMetrics, 'DB')
+  var DBMetricsHTML = generateMetricsHTML(snapshotObject1.Metrics.DBMetrics, snapshotObject2.Metrics.DBMetrics, 'DB')
 
     var metricsHTML = `
   <table style="width:initial" class="no-border">
@@ -2110,9 +2110,9 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
        var resp = await genAI.generateParallel([{section: 'compare_general_info', data: generalInformationHTML},
                                                 {section: 'compare_nondef_params', data: nonDefParameters},
                                                 {section: 'compare_wait_events', data: instanceActivityHTML + "\n" + waitEventsHTML, events: WaitEvents},
-                                                {section: 'compare_static_metrics', data: staticMetricsHTML},
+                                                {section: 'compare_static_metrics', data: (snapshotObject1.GeneralInformation.DBInstanceClass === 'db.serverless' || snapshotObject2.GeneralInformation.DBInstanceClass === 'db.serverless') ? 'It is not relevant, skip analyzes for this section of the report.' : staticMetricsHTML},
                                                 {section: 'compare_additional_metrics', data: additionalMetricsHTML},
-                                                {section: 'compare_instance_recommendations', data: instanceRecommendationsHTML},
+                                                {section: 'compare_instance_recommendations', data: (snapshotObject1.GeneralInformation.DBInstanceClass === 'db.serverless' || snapshotObject2.GeneralInformation.DBInstanceClass === 'db.serverless') ? 'Consider that one of the snapshots is from serverless instance where instance recommendations are irrelevant' : instanceRecommendationsHTML},
                                                 {section: 'compare_os_metrics', data: OSMetricsHTML},
                                                 {section: 'compare_db_metrics', data: DBMetricsHTML}
                                        ]);
