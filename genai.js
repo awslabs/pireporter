@@ -272,7 +272,7 @@ class LLMGenerator {
          promptGrandSummary = promptGrandSummary.replace('{{ knowledge }}', knowledge);
          promptGrandSummary = promptGrandSummary.replace('{{ data }}', sectionSummaries);
          
-         console.log('PROMP GRAND SUMMARY:', promptGrandSummary)
+         //console.log('PROMP GRAND SUMMARY:', promptGrandSummary)
          
          command = getBedrockCommand(system_prompt, null, [
             {"role": "user", "content": [{"type": "text", "text": promptGrandSummary}]},
