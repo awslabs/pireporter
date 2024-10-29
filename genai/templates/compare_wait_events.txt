@@ -32,3 +32,5 @@ To accomplish this task, follow these steps:
 Once you have reviewed and understood these instructions, proceed to generate the summary of important differences in metrics, skipping any preamble or introduction.
 
 {{ data }}
+
+Consider that bigger values of pct_db_time doesn't mean that the event is significant in the snapshot period. Always consider the "DBTime (min)" to "Wallclock time (min)" relation and then the  pct_db_time. For example if "Wallclock time (min)" is 60 min, "DBTime (min)" is 5 min, and CPU pct_db_time is 100%, which means 100% DBTime, it means that all 5 minutes of DBTime was consumed by CPU event, and because DBTime is 5 minutes it makes just 8.3% of Wallclock time, which is 60 minutes. That is why even CPU was 100% of DBTime, DBTime itself is not so significant.

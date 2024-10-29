@@ -27,7 +27,8 @@ const { getDBParameters,
         dbInstanceToEC2,
         ec2InstanceToDB,
         getPrices,
-        getWriteThroughput
+        getWriteThroughput,
+        std
       } = require('./helpers');
 
 
@@ -109,6 +110,30 @@ const getCWMetrics = async function (generalInformation) {
         {Id: "volumeBytesUsed", Label: "${LAST}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "VolumeBytesUsed",
                                                     Dimensions: [{Name: "DBClusterIdentifier", Value: generalInformation.DBClusterIdentifier}]},
                                                     Period: pseconds,
+                                                    Stat: "Maximum"}},
+        {Id: "freeableMemoryAVG", Label: "${AVG}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "FreeableMemory",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Average"}},
+        {Id: "freeableMemoryMAX", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "FreeableMemory",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Maximum"}},
+        {Id: "tempStorageIOPSAVG", Label: "${AVG}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "TempStorageIOPS",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Average"}},
+        {Id: "tempStorageIOPSMAX", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "TempStorageIOPS",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Maximum"}},
+        {Id: "tempStorageThroughputAVG", Label: "${AVG}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "TempStorageThroughput",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
+                                                    Stat: "Average"}},
+        {Id: "tempStorageThroughputMAX", Label: "${MAX}",  MetricStat: { Metric: { Namespace: "AWS/RDS", MetricName: "TempStorageThroughput",
+                                                    Dimensions: [{Name: "DBInstanceIdentifier", Value: generalInformation.DBInstanceIdentifier}]},
+                                                    Period: pseconds,
                                                     Stat: "Maximum"}}
                                                     
     ]
@@ -117,12 +142,13 @@ const getCWMetrics = async function (generalInformation) {
   
   try {
     cwMetrics = await cw.send(cwCommand);
-  } catch(err) { 
+  } catch(err) {
+    console.error(err)
     reject(err)
   }
   
-   
-   //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
+   //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'volumeBytesUsed').Values)
+   //console.log('CW data', pseconds, cwMetrics.MetricDataResults.find(v => v.Id === 'tempStorageThroughputMAX').Label)
    
    resolve(cwMetrics)  
 
@@ -204,10 +230,15 @@ const counterMetrics = async function (generalInformation, options) {
     const getValues = function (arr) {
       return arr.map(dataPoint => dataPoint.Value)
     }
-    if (dataPointsArr.length === 3) {
+    if (dataPointsArr.length > 3) {
+        res["sum"] = calculateSum(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.sum`).DataPoints))
         res["avg"] = Number(calculateAverage(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.avg`).DataPoints)).toFixed(2))
-        res["max"] = calculateMax(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.max`).DataPoints))
-        res["min"] = calculateMin(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.min`).DataPoints))
+        res["max"] = Number(calculateMax(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.max`).DataPoints)).toFixed(2))
+        res["min"] = Number(calculateMin(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.min`).DataPoints)).toFixed(2))
+    } else if (dataPointsArr.length === 3) {
+        res["avg"] = Number(calculateAverage(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.avg`).DataPoints)).toFixed(2))
+        res["max"] = Number(calculateMax(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.max`).DataPoints)).toFixed(2))
+        res["min"] = Number(calculateMin(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.min`).DataPoints)).toFixed(2))
     } else if (dataPointsArr.length === 1) {
         res["sum"] = calculateSum(getValues(dataPointsArr.find(object => object.Key.Metric === `${metric}.sum`).DataPoints))
     } else {
@@ -557,7 +588,7 @@ const counterMetrics = async function (generalInformation, options) {
           {Metric: "os.tasks.stopped.avg"},{Metric: "os.tasks.stopped.max"},{Metric: "os.tasks.stopped.min"},
           {Metric: "os.tasks.total.avg"},{Metric: "os.tasks.total.max"},{Metric: "os.tasks.total.min"},
           {Metric: "os.tasks.zombie.avg"},{Metric: "os.tasks.zombie.max"},{Metric: "os.tasks.zombie.min"},
-          {Metric: "os.diskIO.rdstemp.readKb.sum"},
+          {Metric: "os.diskIO.rdstemp.readKb.sum"},{Metric: "os.network.rx.sum"},{Metric: "os.network.tx.sum"},
           {Metric: "os.diskIO.rdstemp.writeKb.sum"},
           {Metric: "os.memory.outOfMemoryKillCount.sum"},
           {Metric: "os.tasks.blocked.sum"}
@@ -715,6 +746,53 @@ const counterMetrics = async function (generalInformation, options) {
       
     } catch (error) {
         reject(error)
+    }
+    
+    
+    try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          {Metric: "db.Cache.blks_hit.min"},{Metric: "db.Cache.blks_hit.max"},{Metric: "db.Cache.blks_hit.avg"},
+          {Metric: "db.Cache.buffers_alloc.min"},{Metric: "db.Cache.buffers_alloc.max"},{Metric: "db.Cache.buffers_alloc.avg"},
+          {Metric: "db.Concurrency.deadlocks.min"},{Metric: "db.Concurrency.deadlocks.max"},{Metric: "db.Concurrency.deadlocks.avg"},
+          {Metric: "db.IO.blks_read.min"},{Metric: "db.IO.blks_read.max"},{Metric: "db.IO.blks_read.avg"},
+          {Metric: "db.IO.buffers_backend.min"},{Metric: "db.IO.buffers_backend.max"},{Metric: "db.IO.buffers_backend.avg"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }
+    
+    
+    
+    try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          {Metric: "db.SQL.tup_deleted.min"},{Metric: "db.SQL.tup_deleted.max"},{Metric: "db.SQL.tup_deleted.avg"},
+          {Metric: "db.SQL.tup_fetched.min"},{Metric: "db.SQL.tup_fetched.max"},{Metric: "db.SQL.tup_fetched.avg"},
+          {Metric: "db.SQL.tup_inserted.min"},{Metric: "db.SQL.tup_inserted.max"},{Metric: "db.SQL.tup_inserted.avg"},
+          {Metric: "db.SQL.tup_returned.min"},{Metric: "db.SQL.tup_returned.max"},{Metric: "db.SQL.tup_returned.avg"},
+          {Metric: "db.SQL.tup_updated.min"},{Metric: "db.SQL.tup_updated.max"},{Metric: "db.SQL.tup_updated.avg"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
     }     
     
     
@@ -750,11 +828,57 @@ const counterMetrics = async function (generalInformation, options) {
         EndTime: endTime,
         PeriodInSeconds: pseconds,
         MetricQueries: [
+          {Metric: "db.IO.buffers_backend_fsync.min"},{Metric: "db.IO.buffers_backend_fsync.max"},{Metric: "db.IO.buffers_backend_fsync.avg"},
+          {Metric: "db.IO.buffers_clean.min"},{Metric: "db.IO.buffers_clean.max"},{Metric: "db.IO.buffers_clean.avg"},
+          {Metric: "db.IO.storage_blks_read.min"},{Metric: "db.IO.storage_blks_read.max"},{Metric: "db.IO.storage_blks_read.avg"},
+          {Metric: "db.IO.storage_blk_read_time.min"},{Metric: "db.IO.storage_blk_read_time.max"},{Metric: "db.IO.storage_blk_read_time.avg"},
+          {Metric: "db.IO.storage_blks_read.sum"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }
+  
+  
+  try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          {Metric: "db.IO.orcache_blks_hit.min"},{Metric: "db.IO.orcache_blks_hit.max"},{Metric: "db.IO.orcache_blks_hit.avg"},
+          {Metric: "db.IO.orcache_blk_read_time.min"},{Metric: "db.IO.orcache_blk_read_time.max"},{Metric: "db.IO.orcache_blk_read_time.avg"},
+          {Metric: "db.IO.local_blks_read.min"},{Metric: "db.IO.local_blks_read.max"},{Metric: "db.IO.local_blks_read.avg"},
+          {Metric: "db.IO.local_blk_read_time.min"},{Metric: "db.IO.local_blk_read_time.max"},{Metric: "db.IO.local_blk_read_time.avg"},
+          {Metric: "db.IO.orcache_blks_hit.sum"}, {Metric: "db.IO.local_blks_read.sum"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }
+  
+  
+  try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
           {Metric: "db.State.idle_in_transaction_count.sum"},{Metric: "db.Temp.temp_bytes.sum"},{Metric: "db.Temp.temp_files.sum"},
           {Metric: "db.State.idle_in_transaction_max_time.avg"},{Metric: "db.State.idle_in_transaction_max_time.max"},{Metric: "db.State.idle_in_transaction_max_time.min"},
           {Metric: "db.Transactions.active_transactions.sum"},{Metric: "db.Transactions.blocked_transactions.sum"},{Metric: "os.diskIO.auroraStorage.readLatency.min"},
           {Metric: "db.Transactions.duration_commits.avg"},{Metric: "db.Transactions.duration_commits.max"},{Metric: "db.Transactions.duration_commits.min"},
-          {Metric: "db.Transactions.max_used_xact_ids.sum"},{Metric: "db.Transactions.xact_commit.sum"},{Metric: "db.Transactions.xact_rollback.sum"}
+          {Metric: "db.Transactions.xact_commit.sum"},{Metric: "db.Transactions.xact_rollback.sum"}
         ]
       });
       
@@ -763,6 +887,52 @@ const counterMetrics = async function (generalInformation, options) {
     } catch (error) {
         reject(error)
     }     
+  
+  try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          {Metric: "db.Temp.temp_files.avg"},{Metric: "db.Temp.temp_files.max"},{Metric: "db.Temp.temp_files.min"},
+          {Metric: "db.Temp.temp_bytes.avg"},{Metric: "db.Temp.temp_bytes.max"},{Metric: "db.Temp.temp_bytes.min"},
+          {Metric: "db.Transactions.max_used_xact_ids.avg"},{Metric: "db.Transactions.max_used_xact_ids.max"},{Metric: "db.Transactions.max_used_xact_ids.min"},
+          {Metric: "db.Transactions.oldest_inactive_logical_replication_slot_xid_age.avg"},{Metric: "db.Transactions.oldest_inactive_logical_replication_slot_xid_age.max"},{Metric: "db.Transactions.oldest_inactive_logical_replication_slot_xid_age.min"},
+          {Metric: "db.Transactions.oldest_active_logical_replication_slot_xid_age.avg"},{Metric: "db.Transactions.oldest_active_logical_replication_slot_xid_age.max"},{Metric: "db.Transactions.oldest_active_logical_replication_slot_xid_age.min"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }     
+  
+  
+  try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          {Metric: "db.Transactions.oldest_reader_feedback_xid_age.avg"},{Metric: "db.Transactions.oldest_reader_feedback_xid_age.max"},{Metric: "db.Transactions.oldest_reader_feedback_xid_age.min"},
+          {Metric: "db.Transactions.oldest_prepared_transaction_xid_age.avg"},{Metric: "db.Transactions.oldest_prepared_transaction_xid_age.max"},{Metric: "db.Transactions.oldest_prepared_transaction_xid_age.min"},
+          {Metric: "db.Transactions.oldest_running_transaction_xid_age.avg"},{Metric: "db.Transactions.oldest_running_transaction_xid_age.max"},{Metric: "db.Transactions.oldest_running_transaction_xid_age.min"},
+          {Metric: "db.Transactions.active_transactions.avg"},{Metric: "db.Transactions.active_transactions.max"},{Metric: "db.Transactions.active_transactions.min"},
+          {Metric: "db.User.max_connections.avg"},{Metric: "db.User.max_connections.max"},{Metric: "db.User.max_connections.min"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }     
+  
   
   
   try {
@@ -926,6 +1096,18 @@ const counterMetrics = async function (generalInformation, options) {
   var auroraEstimatedSharedMemoryBytesAvg = calculateAverage(cwData.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
   var auroraEstimatedSharedMemoryBytes2sd = calc2SDValue(cwData.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
   
+  var serverlessTempStorageIOPSMax, serverlessTempStorageIOPSAvg, serverlessTempStorageTPAvg, serverlessTempStorageTPMax, serverlessTempStorageTPMaxAvg, serverlessTempStorageTPDataPoints
+  
+  if (generalInformation.DBInstanceClass === 'db.serverless') {
+    serverlessTempStorageIOPSMax = parseFloat(cwData.MetricDataResults.find(v => v.Id === 'tempStorageIOPSMAX').Label.replace(/,/g, ''))
+    serverlessTempStorageIOPSAvg = parseFloat(cwData.MetricDataResults.find(v => v.Id === 'tempStorageIOPSAVG').Label.replace(/,/g, ''))
+    serverlessTempStorageTPAvg   = (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'tempStorageThroughputAVG').Label.replace(/,/g, ''))/1024).toFixed(2)
+    serverlessTempStorageTPMax   = (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'tempStorageThroughputMAX').Label.replace(/,/g, ''))/1024).toFixed(2)
+    serverlessTempStorageTPMaxAvg   = (calculateAverage(cwData.MetricDataResults.find(v => v.Id === 'tempStorageThroughputMAX').Values) /1024).toFixed(2)
+    serverlessTempStorageTPDataPoints = cwData.MetricDataResults.find(v => v.Id === 'tempStorageThroughputMAX').Values.length
+  }
+  
+  
   // Calculating actual network traffic which consists from the following components:
   //   1. CW.StorageNetworkThroughput // The write traffic going to the Aurora Storage, because of 6 copies of each block, this is 6x bigger than CW.WriteThroughput
   //   If instance is writer then 2a, if reader then 2b
@@ -995,11 +1177,24 @@ const counterMetrics = async function (generalInformation, options) {
   var localStorageThroughputMaxMB = (OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.writeKbPS').max + OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.readKbPS').max) / 1024
   var localStorageThroughputAvgMB = (OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.writeKbPS').avg + OS_Metrics.diskIO.metrics.find(m => m.metric === 'os.diskIO.rdstemp.readKbPS').avg) / 1024
   
+  
+  
+  
+  // #ag
+  
   var AdditionalMetrics = {
     bufferCacheHitRatio: {value: parseFloat(cwData.MetricDataResults.find(v => v.Id === 'bufferCacheHitRatio').Label.replace(/,/g, '')),
                            unit: 'Percent',
                            label: 'Buffer cache hit ratio', 
                            desc: `Buffer cache hit ratio`},
+    freeableMemoryAvg: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'freeableMemoryAVG').Label.replace(/,/g, '')) /1024/1024/1024).toFixed(2),
+                           unit: 'GB',
+                           label: 'Freeable Memory average', 
+                           desc: `The amount of available random access memory. This metric reports the value of the MemAvailable field of /proc/meminfo. In case of serverless if this metric approaches a value of 0, the DB instance has scaled up as much as it can and is nearing the limit of its available memory. Consider increasing the maximum ACU setting.`},
+    freeableMemoryMax: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'freeableMemoryMAX').Label.replace(/,/g, '')) /1024/1024/1024).toFixed(2),
+                           unit: 'GB',
+                           label: 'Freeable Memory maximum', 
+                           desc: `The amount of available random access memory. This metric reports the value of the MemAvailable field of /proc/meminfo. In case of serverless if this metric approaches a value of 0, the DB instance has scaled up as much as it can and is nearing the limit of its available memory. Consider increasing the maximum ACU setting.`},
     AuroraEstimatedSharedMemoryUsedAvgMB: (generalInformation.DBInstanceClass === 'db.serverless') ? undefined : {value: (auroraEstimatedSharedMemoryBytesAvg / 1024 / 1024).toFixed(2),
                            unit: 'MB',
                            label: 'Average estimated buffer pool memory used', 
@@ -1008,6 +1203,27 @@ const counterMetrics = async function (generalInformation, options) {
                            unit: 'MB',
                            label: 'Max estimated buffer pool memory used', 
                            desc: `The maximum value of estimated amount of shared buffer or buffer pool memory which was actively used during the reporting period.`},
+                           
+    tempStorageIOPSAvg: (generalInformation.DBInstanceClass !== 'db.serverless') ? undefined : {value: serverlessTempStorageIOPSAvg,
+                           unit: 'Count',
+                           label: 'Temp storage IOPS average from CW', 
+                           desc: `The number of IOPS for both read and writes on local storage attached to the DB instance. This metric represents a count and is measured once per second.`},
+    tempStorageIOPSMax: (generalInformation.DBInstanceClass !== 'db.serverless') ? undefined : {value: serverlessTempStorageIOPSMax,
+                           unit: 'Count',
+                           label: 'Temp storage IOPS maximum from CW', 
+                           desc: `The number of IOPS for both read and writes on local storage attached to the DB instance. This metric represents a count and is measured once per second.`},
+    tempStorageTPAvg: (generalInformation.DBInstanceClass !== 'db.serverless') ? undefined : {value: serverlessTempStorageTPAvg,
+                           unit: 'KB/s',
+                           label: 'Temp storage throughput average from CW', 
+                           desc: `The amount of data transferred to and from local storage associated with the DB instance. This metric represents bytes and is measured once per second.`},
+    tempStorageTPMax: (generalInformation.DBInstanceClass !== 'db.serverless') ? undefined : {value: serverlessTempStorageTPMax,
+                           unit: 'KB/s',
+                           label: 'Temp storage throughput maximum from CW', 
+                           desc: `The amount of data transferred to and from local storage associated with the DB instance. This metric represents bytes and is measured once per second.`},
+    tempStorageTPMaxAvg: (generalInformation.DBInstanceClass !== 'db.serverless') ? undefined : {value: serverlessTempStorageTPMaxAvg,
+                           unit: 'KB/s',
+                           label: `Temp storage throughput average of ${serverlessTempStorageTPDataPoints} max data points from CW`, 
+                           desc: `CloudWatch returned ${serverlessTempStorageTPDataPoints} data points, max value for each data point. This metric is the average of these max values.`},
     BlocksReadToLogicalReads: {value: (DB_Metrics.IO.metrics.find(m => m.metric === 'db.IO.blks_read').sum / DB_Metrics.SQL.metrics.find(m => m.metric === 'db.SQL.logical_reads').sum * 100).toFixed(2),
                                unit: 'Percent',
                                label: 'Pct disk reads', 

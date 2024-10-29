@@ -873,6 +873,24 @@ rds.describeDBInstances(params, async function(err, data) {
 
 
 
+const std = function (numbers) {
+  // Step 1: Calculate the mean
+  const mean = numbers.reduce((sum, num) => sum + num, 0) / numbers.length;
+
+  // Step 2: Calculate the squared differences from the mean
+  const squaredDifferences = numbers.map(num => Math.pow(num - mean, 2));
+
+  // Step 3: Calculate the average of the squared differences
+  const variance = squaredDifferences.reduce((sum, num) => sum + num, 0) / numbers.length;
+
+  // Step 4: Take the square root of the variance
+  const standardDeviation = Math.sqrt(variance);
+
+  return standardDeviation;
+}
+
+
+
 
 // Export all the functions in this file to be used in other modules
 module.exports = {
@@ -900,5 +918,6 @@ module.exports = {
   formatSeconds,
   calcNetworkPerformanceLimits,
   getWriteThroughput,
-  getAllDBParameters
+  getAllDBParameters,
+  std
 }
