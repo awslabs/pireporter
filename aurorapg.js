@@ -967,7 +967,10 @@ const counterMetrics = async function (generalInformation, options) {
         PeriodInSeconds: pseconds,
         MetricQueries: [
           {Metric: "db.IO.read_latency.avg"},{Metric: "db.IO.read_latency.max"},{Metric: "db.IO.read_latency.min"},
-          {Metric: "db.Transactions.commit_latency.avg"},{Metric: "db.Transactions.commit_latency.max"},{Metric: "db.Transactions.commit_latency.min"}
+          {Metric: "db.Transactions.commit_latency.avg"},{Metric: "db.Transactions.commit_latency.max"},{Metric: "db.Transactions.commit_latency.min"},
+          {Metric: "db.state.active_count.avg"},{Metric: "db.state.active_count.max"},{Metric: "db.state.active_count.min"},
+          {Metric: "db.state.idle_count.avg"},{Metric: "db.state.idle_count.max"},{Metric: "db.state.idle_count.min"},
+          {Metric: "db.state.active_count.sum"},{Metric: "db.state.idle_count.sum"}
         ]
       });
       
@@ -978,6 +981,27 @@ const counterMetrics = async function (generalInformation, options) {
     }     
     
     
+  try {
+      var PI_result = await pi.getResourceMetrics({
+        ServiceType: "RDS",
+        Identifier: generalInformation.DbiResourceId,
+        StartTime: startTime,
+        EndTime: endTime,
+        PeriodInSeconds: pseconds,
+        MetricQueries: [
+          {Metric: "db.state.idle_in_transaction_count.avg"},{Metric: "db.state.idle_in_transaction_count.max"},{Metric: "db.state.idle_in_transaction_count.min"},
+          {Metric: "db.state.idle_in_transaction_aborted_count.avg"},{Metric: "db.state.idle_in_transaction_aborted_count.max"},{Metric: "db.state.idle_in_transaction_aborted_count.min"},
+          {Metric: "db.state.idle_in_transaction_max_time.avg"},{Metric: "db.state.idle_in_transaction_max_time.max"},{Metric: "db.state.idle_in_transaction_max_time.min"},
+          {Metric: "db.state.idle_in_transaction_count.sum"},{Metric: "db.state.idle_in_transaction_aborted_count.sum"},{Metric: "db.state.idle_in_transaction_max_time.sum"}
+        ]
+      });
+      
+      DB_Aurora_MetricList.push(...PI_result.MetricList)
+      
+    } catch (error) {
+        reject(error)
+    }     
+    
     // #ag
 
   var DB_Metrics = {
@@ -986,7 +1010,7 @@ const counterMetrics = async function (generalInformation, options) {
     Checkpoint: {name: "Checkpoint", metrics: []},
     Concurrency: {name: "Concurrency", metrics: []},
     IO: {name: "I/O", metrics: []},
-    State: {name: "State", metrics: []},
+    state: {name: "State", metrics: []},
     Temp: {name: "Temp", metrics: []},
     Transactions: {name: "Transactions", metrics: []},
     User: {name: "User", metrics: []},
@@ -1017,8 +1041,8 @@ const counterMetrics = async function (generalInformation, options) {
       case cm.Metric.startsWith("db.IO") && !DB_MetricsExcludeList.includes(cm.Metric):
         DB_Metrics.IO.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
-      case cm.Metric.startsWith("db.State") && !DB_MetricsExcludeList.includes(cm.Metric):
-        DB_Metrics.State.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
+      case cm.Metric.startsWith("db.state") && !DB_MetricsExcludeList.includes(cm.Metric):
+        DB_Metrics.state.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
         break;
       case cm.Metric.startsWith("db.Temp") && !DB_MetricsExcludeList.includes(cm.Metric):
         DB_Metrics.Temp.metrics.push({metric: cm.Metric, desc: cm.Description, unit: cm.Unit, ...getMetricData(DB_Aurora_MetricList, cm.Metric)})
