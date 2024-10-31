@@ -978,6 +978,7 @@ const counterMetrics = async function (generalInformation, options) {
     }     
     
     
+    // #ag
 
   var DB_Metrics = {
     SQL: {name: "SQL", metrics: []},
@@ -1715,7 +1716,6 @@ try {
       },
     });
   
-  //#ag
   
     //console.log('DEBUG', JSON.stringify(sqlidsTokenized, null, 2))
     
