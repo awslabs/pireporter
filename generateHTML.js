@@ -572,6 +572,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
 
       const getCPUpct = function(sqlid) {
         var sql_waits = snap.Waits.find(sql => sql.sql_id === sqlid);
+        if (! sql_waits) return '-'
         var cpu_wait = sql_waits.waits.find(wait => wait.event === 'CPU');
         if (cpu_wait) {
           return cpu_wait.pct.toFixed(2) + '%'
@@ -583,6 +584,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
 
       const getIOpct = function(sqlid) {
         var sql_waits = snap.Waits.find(sql => sql.sql_id === sqlid);
+        if (! sql_waits) return '-'
         var io_wait = sql_waits.waits.filter(wait => wait.event.startsWith("IO:"));
         if (io_wait.length > 0) {
           var sumIO = io_wait.reduce((acc, val) => acc + val.pct, 0)
@@ -595,6 +597,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
 
       const loadByDB = function(sqlid) {
         var sqls = snap.LoadByDatabase.find(sql => sql.sql_id === sqlid);
+        if (! sqls) return '-'
         var rows = '',
           rowdata = ''
         for (let i = 0; i < sqls.dbload.length; i++) {
@@ -606,6 +609,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
 
       const loadByUser = function(sqlid) {
         var sqls = snap.LoadByUser.find(sql => sql.sql_id === sqlid);
+        if (! sqls) return '-'
         var rows = '',
           rowdata = ''
         for (let i = 0; i < sqls.dbload.length; i++) {
@@ -638,6 +642,7 @@ const generateHTMLReport = async function(snapshotObject, genai) {
         var rows = '',
           rowdata = ''
         var sql_waits = snap.Waits.find(sql => sql.sql_id === sqlid);
+        if (! sql_waits) return ''
         for (let i = 0; i < sql_waits.waits.length; i++) {
           rowdata = td(sql_waits.waits[i].event) + td(sql_waits.waits[i].pct.toFixed(2) + '%')
           rows = `${rows}\n${tr(rowdata)}`
