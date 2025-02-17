@@ -250,43 +250,66 @@ const evaluateParameter = function (instMemoryMiB, paramValue) {
 
 const calculateAverage = function (numbers) {
   if (!Array.isArray(numbers) || numbers.length === 0) {
-    return undefined;
+    return 0;  // Return 0 instead of undefined for empty arrays
   }
   let sum = 0;
+  let validCount = 0;
+  
   for (let i = 0; i < numbers.length; i++) {
-    if (numbers[i] == null) continue
-    sum += numbers[i];
+    // Skip null and undefined values
+    if (numbers[i] == null) continue;
+    // Convert extremely small numbers to 0
+    const currentValue = numbers[i] <= Number.MIN_VALUE ? 0 : numbers[i];
+    sum += currentValue;
+    validCount++;
   }
-  return sum / numbers.length;
+  
+  // Return 0 if no valid numbers found
+  return validCount === 0 ? 0 : sum / validCount;
 }
+
 
 const calculateMax = function (numbers) {
   if (!Array.isArray(numbers) || numbers.length === 0) {
-    return undefined;
+    return 0;  // Return 0 instead of undefined for empty arrays
   }
-  let maxValue = numbers[0];
-  for (let i = 1; i < numbers.length; i++) {
-    if (numbers[i] == null) continue
-    if (numbers[i] > maxValue) {
-      maxValue = numbers[i];
+  let maxValue = 0;  // Start with 0 as default
+  for (let i = 0; i < numbers.length; i++) {
+    // Skip null, undefined, or convert extremely small numbers to 0
+    if (numbers[i] == null) continue;
+    const currentValue = numbers[i] <= Number.MIN_VALUE ? 0 : numbers[i];
+    if (currentValue > maxValue) {
+      maxValue = currentValue;
     }
   }
   return maxValue;
 }
 
+
 const calculateMin = function (numbers) {
   if (!Array.isArray(numbers) || numbers.length === 0) {
-    return undefined;
+    return 0;  // Return 0 instead of undefined for empty arrays
   }
-  let minValue = numbers[0];
-  for (let i = 1; i < numbers.length; i++) {
-    if (numbers[i] == null) continue
-    if (numbers[i] < minValue) {
-      minValue = numbers[i];
+  let minValue = 0;  // Start with 0 as default
+  let hasValidNumber = false;
+  
+  for (let i = 0; i < numbers.length; i++) {
+    // Skip null and undefined values
+    if (numbers[i] == null) continue;
+    // Convert extremely small numbers to 0
+    const currentValue = numbers[i] <= Number.MIN_VALUE ? 0 : numbers[i];
+    
+    if (!hasValidNumber) {
+      minValue = currentValue;
+      hasValidNumber = true;
+    } else if (currentValue < minValue) {
+      minValue = currentValue;
     }
   }
+  
   return minValue;
 }
+
 
 
 const calculateSum = function (numbers) {

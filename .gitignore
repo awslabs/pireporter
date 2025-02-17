@@ -6,6 +6,7 @@ portable/snapshots/
 snapshot_*
 *.html
 notes.txt
+devfile.yaml
 
 # Logs
 logs
