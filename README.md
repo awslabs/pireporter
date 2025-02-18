@@ -9,11 +9,13 @@ The PI Reporter is a tool designed to significantly streamline the process of pe
 
 ##### New major version 2.0 released
 
-The main feature of this version is integration with Amazon Bedrock to leverage the power of the Cloud 3 models for analyzing single snapshot and comparing snapshot reports, generating detailed report with summary (including root cause analyzes) and recommendations for all sections of the report. This will significantly help and save time during troubleshooting and report reading.
+The main feature of this version is integration with Amazon Bedrock to leverage the power of the LLMs like Claude or Amazon Nova models for analyzing single snapshot and comparing snapshot reports, generating detailed report with summary (including root cause analysis) and recommendations for all sections of the report. This will significantly help and save time during troubleshooting and report reading.
 
 GenAI analyses can be optionally enabled during the report generation phase. The new attribute `--ai-analyzes` has been introduced for this purpose.
 
-The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Cloud 3 Sonnet model. The account which will generate reports must enable access to the required Cloud 3 model. Use this guide to enable access: [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
+Cloud 3.5 Sonnet v2 model over cross-region inference is used by default. Other models like Claude 3 Opus or Amazon Nova can be used.
+
+The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Cloud 3.5 Sonnet v2 and other big models. You can change the model in the `conf.js` configuration file, you can use also inference profile ID of the cross-region inference. Make sure that the model you are trying to use is part of policy. The account which will generate reports must enable access to the required Cloud or Amazon Nova model. Use this guide to enable access: [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
 
 Be aware that using `--ai-analyzes` will incur additional charges. The tool will always print out the number of input and output tokens used to accomplish the analyses. It will help you estimate the cost.
 

@@ -11,35 +11,70 @@ const client = new BedrockRuntimeClient({region: conf.bedrockRegion.value});
 
 const inferenceParallelDegree = conf.inferenceParallelDegree.value || 8;
 
-function getBedrockCommand (system_prompt, prompt, messages, model = conf.claudeMode.value || "anthropic.claude-3-sonnet-20240229-v1:0") {
+function getBedrockCommand (system_prompt, prompt, messages, model = conf.bedrockModel.value) {
+  const isClaudeModel = model.toLowerCase().includes('claude');
+  
+  // Transform existing messages to include type:text for Claude
+  const transformedMessages = messages ? messages.map(msg => ({
+    ...msg,
+    content: msg.content.map(c => ({
+      type: "text",
+      text: c.text
+    }))
+  })) : undefined
+
+  let bodyContent;
+  
+  if (isClaudeModel) {
+    bodyContent = {
+      "max_tokens": 4096,
+      "temperature": 0,
+      "top_p": 0,
+      "messages": transformedMessages || [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": system_prompt ? system_prompt + "\n\n" + prompt : prompt
+            }
+          ]
+        }
+      ]
+    };
+    
+    bodyContent.anthropic_version = conf.anthropicVersion.value;
+  } else {
+    // For non-Claude models (like Amazon's models)
+    bodyContent = {
+      "inferenceConfig": {
+        "max_new_tokens": 4096,
+        "temperature": 0,
+        "top_p": 0
+      },
+      "messages": messages || [
+        {
+          "role": "user",
+          "content": [
+            {
+              "text": system_prompt ? system_prompt + "\n\n" + prompt : prompt
+            }
+          ]
+        }
+      ]
+    };
+  }
 
   const input = {
-  "modelId": model,
-  "contentType": "application/json",
-  "accept": "application/json",
-  "body": JSON.stringify({
-    "anthropic_version": conf.anthropicVersion.value || "bedrock-2023-05-31",
-    "max_tokens": 4096,
-    "temperature": 0,
-    "top_p": 0,
-    "system": system_prompt,
-    "messages": messages || [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": prompt
-          }
-        ]
-      }
-    ]
-  })
-}
-
+    "modelId": model,
+    "contentType": "application/json",
+    "accept": "application/json",
+    "body": JSON.stringify(bodyContent)
+  };
 
   return new InvokeModelCommand(input);
 }
+
 
 
 
@@ -145,13 +180,40 @@ class LLMGenerator {
     const processBody = (body) => {
        const respBodyBuf = Buffer.from(body);
        const respBody = JSON.parse(respBodyBuf.toString());
-       const text = respBody.content[0].text;
-       const usage = respBody.usage;
-       const stopReason = respBody.stop_reason;
-       this.#usage.input_tokens += usage.input_tokens;
-       this.#usage.output_tokens += usage.output_tokens;
-       this.#sectionsBuffer[section] = (this.#sectionsBuffer[section] || "") + text;
-       return {usage, text, stopReason}
+       let text, usage, stopReason;
+       
+       //console.log('DEBUG', JSON.stringify(respBody, null, 2))
+
+    if (respBody.content && Array.isArray(respBody.content)) {
+        text = respBody.content[0].text;
+        usage = respBody.usage;
+        stopReason = respBody.stop_reason;
+    } else if (respBody.results && respBody.results.length > 0) {
+        text = respBody.results[0].outputText;
+        usage = {
+            input_tokens: respBody.inputTokenCount || 0,
+            output_tokens: respBody.outputTokenCount || 0
+        };
+        stopReason = respBody.results[0].completionReason;
+    } else if (respBody.generated_text) {
+        text = respBody.generated_text;
+        usage = respBody.usage || { input_tokens: 0, output_tokens: 0 };
+        stopReason = respBody.stop_reason || "unknown";
+    } else if (respBody.output?.message?.content?.[0]?.text) {
+        // Handle Nova Pro format
+        text = respBody.output.message.content[0].text;
+        usage = respBody.usage || {
+            input_tokens: respBody.usage?.inputTokens || 0,
+            output_tokens: respBody.usage?.outputTokens || 0
+        };
+        stopReason = respBody.stopReason || "unknown";
+    } else {
+        throw new Error("Unsupported model response format");
+    }
+      this.#usage.input_tokens += usage.input_tokens;
+      this.#usage.output_tokens += usage.output_tokens;
+      this.#sectionsBuffer[section] = (this.#sectionsBuffer[section] || "") + text;
+      return {usage, text, stopReason}
     }
     
     var knowledge;
@@ -227,26 +289,45 @@ class LLMGenerator {
         let prefillFilePath = (this.type === 'single_snapshot') ? `./genai/templates/single_summary_prefilling.txt` : `./genai/templates/compare_summary_prefilling.txt`;
         var prefillFileContent = fs.readFileSync(prefillFilePath, 'utf8');
         command = getBedrockCommand(system_prompt, null, [
-            {"role": "user", "content": [{"type": "text", "text": prompt}]},
-            {"role": "assistant", "content": [{"type": "text", "text": prefillFileContent}]}
+            {"role": "user", "content": [{"text": prompt}]},
+            {"role": "assistant", "content": [{"text": prefillFileContent}]}
           ])
     } else {
         command = getBedrockCommand(system_prompt, prompt);
     }
     
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     try {
-      var response = await client.send(command);
+      let success = false;
+      while (!success) {
+        try {
+          var response = await client.send(command);
+          success = true;
+        } catch (error) {
+          if (error.name === 'ThrottlingException') {
+            //console.log('Throttling detected, waiting 3 seconds before retry...');
+            await delay(5000); // Wait for 5 seconds
+            continue;
+          }
+          // If it's not a throttling error, throw it
+          const { requestId, cfId, extendedRequestId } = error.$metadata;
+          console.log(error, { requestId, cfId, extendedRequestId });
+          throw error;
+        }
+      }
     } catch (error) {
       const { requestId, cfId, extendedRequestId } = error.$metadata;
       console.log(error, { requestId, cfId, extendedRequestId });
     }
+    
+    process.stdout.write('.');
     var result = processBody(response.body);
     
     if (section.endsWith('_summary') && result.stopReason === "max_tokens") {
        command = getBedrockCommand(system_prompt, null, [
-            {"role": "user", "content": [{"type": "text", "text": prompt}]},
-            {"role": "assistant", "content": [{"type": "text", "text": prefillFileContent + '\n' + result.text}]},
-            {"role": "user", "content": [{"type": "text", "text": "Continue"}]}
+            {"role": "user", "content": [{ "text": prompt}]},
+            {"role": "assistant", "content": [{ "text": prefillFileContent + '\n' + result.text}]},
+            {"role": "user", "content": [{ "text": "Continue"}]}
           ])
        try {
          var response2 = await client.send(command);
@@ -275,22 +356,42 @@ class LLMGenerator {
          //console.log('PROMP GRAND SUMMARY:', promptGrandSummary)
          
          command = getBedrockCommand(system_prompt, null, [
-            {"role": "user", "content": [{"type": "text", "text": promptGrandSummary}]},
-            {"role": "assistant", "content": [{"type": "text", "text": "<h2>Summary:</h2>"}]}
+            {"role": "user", "content": [{ "text": promptGrandSummary}]},
+            {"role": "assistant", "content": [{ "text": "<h2>Summary:</h2>"}]}
             ]
           )
          
+         const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
          try {
-           var response3 = await client.send(command);
-           var result3 = processBody(response3.body);
+           let success = false;
+           let retryCount = 0;
            
-           var grandResult = result3.text + sectionSummaries
-           this.#sectionsBuffer[section] = grandResult;
-           
+           while (!success) {
+             try {
+               var response3 = await client.send(command);
+               var result3 = processBody(response3.body);
+               
+               var grandResult = result3.text + sectionSummaries;
+               this.#sectionsBuffer[section] = grandResult;
+               success = true;
+               process.stdout.write('.');
+               
+             } catch (error) {
+               if (error.name === 'ThrottlingException') {
+                 await delay(5000);
+                 continue;
+               }
+               // If it's not a throttling error, log it and throw
+               const { requestId, cfId, extendedRequestId } = error.$metadata;
+               console.log(error, { requestId, cfId, extendedRequestId });
+               throw error;
+             }
+           }
          } catch (error) {
            const { requestId, cfId, extendedRequestId } = error.$metadata;
            console.log(error, { requestId, cfId, extendedRequestId });
          }
+         
          
          return {...result3, text: grandResult}
     }
@@ -310,7 +411,7 @@ class LLMGenerator {
   }
   
   async generateParallel (payloadArray) {
-    
+    process.stdout.write('Bedrock analysis running ');
     for (let i = 0; i < payloadArray.length; i += inferenceParallelDegree) {
        let group = payloadArray.slice(i, i + inferenceParallelDegree);
        let promises = group.map(payload => this.#generateLLMOutput.bind(this, payload))
