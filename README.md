@@ -13,7 +13,7 @@ The main feature of this version is integration with Amazon Bedrock to leverage 
 
 GenAI analyses can be optionally enabled during the report generation phase. The new attribute `--ai-analyzes` has been introduced for this purpose.
 
-Cloud 3.5 Sonnet v2 model over cross-region inference is used by default. Other models like Claude 3 Opus or Amazon Nova can be used.
+Claude 3.5 Sonnet v2 model over cross-region inference is used by default. Other models like Claude 3 Opus or Amazon Nova can be used.
 
 The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Cloud 3.5 Sonnet v2 and other big models. You can change the model in the `conf.js` configuration file, you can use also inference profile ID of the cross-region inference. Make sure that the model you are trying to use is part of policy. The account which will generate reports must enable access to the required Cloud or Amazon Nova model. Use this guide to enable access: [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
 
