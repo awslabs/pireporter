@@ -62,7 +62,12 @@
             "Action": [
                 "bedrock:InvokeModel"
             ],
-            "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
+            "Resource": [
+                 "arn:aws:bedrock:*:*:foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+                 "arn:aws:bedrock:*:*:foundation-model/amazon.nova-pro-v1:0",
+                 "arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                 "arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-3-opus-20240229-v1:0"
+            ]
         }
     ]
 }
