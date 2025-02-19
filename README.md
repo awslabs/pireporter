@@ -44,7 +44,7 @@ Additionally, the comments associated with snapshots using the `-m` command-line
 
 The following data will be gathered into the snapshot files and represented in the reports::
 * Snapshot metadata
-* General details about the Aurora/RDS instance, such as instance name, DB instance class, parameter group, backup retention, cluster identifier, multi-AZ configuration, number of vCPUs, network performance, and more.
+* General details about the Amazon Aurora instance, such as instance name, DB instance class, parameter group, backup retention, cluster identifier, multi-AZ configuration, number of vCPUs, network performance, and more.
 * Non-default parameters
 * Instance activity statistics: Average Active Sessions, DBTime, wall clock time
 * Top wait events during the snapshot period, indicating time spent and percentage of DBTime
@@ -149,14 +149,14 @@ For RDS PostgreSQL and Amazon Aurora with PostgreSQL compatibility, consider the
 * Important performance consideration! The `pg_stat_statements` extension uses a hash table in memory to store the query statistics. If there are more unique queries than available memory, then a locking mechanism will kick in which can lead to contention and performance problems. The `pg_stat_statements.max` parameter controls the maximum number of unique statements that can be stored in memory. The default value is 5000. If you have more unique queries, set this accordingly. For example, if you estimate ~6000 unique queries, set it to 10000 to be safe.
 * Also, `blk_read_time` and `blk_write_time` are collected only when the additional `track_io_timing` parameter is enabled.
 
-If the snapshot start time and end time differs from the time you provided on command line, then make sure that the timezon of the host and the Aurora or RDS instance are same.
+If the snapshot start time and end time differs from the time you provided on command line, then make sure that the timezon of the host and the Amazon Aurora instance are same.
 
 Check timezone on the host where you execute `pireporter`:
 ```
 $ timedatectl | grep "Time zone"
        Time zone: Europe/Berlin (CET, +0100)
 ```
-Then connect to the Aurora or RDS instance and check timezone related parameter, in case of PostgreSQL it will be `timezone`:
+Then connect to the Amazon Aurora instance and check timezone related parameter, in case of PostgreSQL it will be `timezone`:
 ```
 postgres=> show timezone;
    TimeZone
@@ -197,11 +197,10 @@ In both cases we have `Europe/Berlin` timezone. If you have differnt values, the
   -m, --comment string           Provide a comment to associate with the        
                                  snapshot.
   -a, --ai-analyzes              When generating reports, include the analysis  
-                                 from the language model (Amazon Bedrock:       
-                                 Claude by Anthropic), which provides its       
-                                 findings, analysis, and recommendations. This  
-                                 option works with create report and create     
-                                 compare periods report.                             
+                                 from the large language model (Amazon Bedrock), 
+                                 which provides its findings, analysis, and 
+                                 recommendations. This option works with create 
+                                 report and create compare periods report.                             
   -r, --create-report            Create HTML report for snapshot.               
   -c, --create-compare-report    Create compare snapshots HTML report for two   
                                  snapshots.                                     
