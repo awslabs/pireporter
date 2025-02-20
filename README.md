@@ -1,5 +1,5 @@
 # PI Reporter
-## The Performance Insights Reporter tool captures snapshots of PI data and generates reports for single snapshots or compared across time periods.
+## The Performance Insights Reporter tool captures snapshots of PI data and generates reports for single snapshots or comparisons across time periods. It uses an agentic approach to analyze reports using LLMs and identify problems and provide recommendations.
 
 The PI Reporter is a tool designed to significantly streamline the process of performance troubleshooting, right-sizing, and cost optimization exercises. It captures snapshots of performance insights (PI) data and generates reports for specific time frame and compare periods report for easy comparison between two time periods. The tool's functionalities include:
 
