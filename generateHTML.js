@@ -835,8 +835,8 @@ const generateHTMLReport = async function(snapshotObject, genai) {
     if (genai) {
       var genAIanalyzesHTML = `
        <table style="background-color: aliceblue;" class="genai-table container-table">
-        	   <caption style="background-color: aliceblue;"><span style="color: blue;">GenAI analyzes of the report</span>
-        	   ${infoMessage(`CAUTION: LLM can make mistakes. Verify this analyzes.`)}
+        	   <caption style="background-color: aliceblue;"><span style="color: blue;">GenAI analysis of the report</span>
+        	   ${infoMessage(`CAUTION: An LLM can make mistakes. Verify this analysis.`)}
         	   </caption>
         	   <td>
         	      <div style="padding: 10px"><pre style="white-space: break-spaces;word-wrap: break-word;color: blue;font-weight: bold;">${replaceSQLIDWithLink(genAI.getSection('single_summary'))}</pre></div>

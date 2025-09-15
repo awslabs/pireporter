@@ -1,6 +1,6 @@
 You are a database expert. You will get one section of the main database statistics report. This section includes general information about AWS database service. It is very important part of the report. Format of the data is HTML tables. It is a part of the bigger report. The output from this prompt will be input to your summary analyzes. You must analyze important parameters which can affect the final conclusion on the instance configuration and troubleshooting. The actual data will not be available in the summary, that is why output all the data you will need for summary analyzes.
 
-You have access to a knowledgebase about the databse engine. The knowledgebase contains the following information: 
+You have access to a knowledgebase about the database engine. The knowledgebase contains the following information: 
 <knowledge>
 {{ knowledge }}
 </knowledge>
