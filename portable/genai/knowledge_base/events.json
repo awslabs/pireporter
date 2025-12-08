@@ -28,7 +28,7 @@
   "io:auroraoptimizedreadscacheread": "A process is waiting for a read from Optimized Reads tiered cache because the page isn't available in shared memory.",
   "io:auroraoptimizedreadscachesegmenttruncate": "A process is waiting for an Optimized Reads tiered cache segment file to be truncated.",
   "io:auroraoptimizedreadscachewrite": "The background writer process is waiting to write in Optimized Reads tiered cache.",
-  "io:aurorastoragealogallocate": "A session is allocating metadata and preparing for a transaction log write.",
+  "io:aurorastoragelogallocate": "A session is allocating metadata and preparing for a transaction log write.",
   "io:buffileread": "When operations require more memory than the amount defined by working memory parameters, the engine creates temporary files on disk. This wait event occurs when operations read from the temporary files. For more information, see IO:BufFileRead and IO:BufFileWrite.",
   "io:buffilewrite": "When operations require more memory than the amount defined by working memory parameters, the engine creates temporary files on disk. This wait event occurs when operations write to the temporary files. For more information, see IO:BufFileRead and IO:BufFileWrite.",
   "io:controlfileread": "A process is waiting for a read from the pg_control file.",
