@@ -10,12 +10,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.569.0",
-    "@aws-sdk/client-cloudwatch": "^3.462.0",
-    "@aws-sdk/client-ec2": "^3.502.0",
-    "@aws-sdk/client-pi": "^3.462.0",
-    "@aws-sdk/client-pricing": "^3.462.0",
-    "@aws-sdk/client-rds": "^3.462.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.965.0",
+    "@aws-sdk/client-cloudwatch": "^3.965.0",
+    "@aws-sdk/client-ec2": "^3.965.0",
+    "@aws-sdk/client-pi": "^3.965.0",
+    "@aws-sdk/client-pricing": "^3.965.0",
+    "@aws-sdk/client-rds": "^3.965.0",
     "command-line-args": "^5.2.1",
     "command-line-usage": "^7.0.1"
   }
