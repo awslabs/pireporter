@@ -1288,7 +1288,8 @@ ${text}`;
   processFileReferences(input) {
     // Match @filepath patterns - supports paths with or without quotes
     // Matches: @filename, @./path/to/file, @/absolute/path, @"path with spaces"
-    const fileRefPattern = /@(?:"([^"]+)"|'([^']+)'|(\S+))/g;
+    // Excludes trailing punctuation like commas, periods, colons, semicolons
+    const fileRefPattern = /@(?:"([^"]+)"|'([^']+)'|([^\s,;:!?]+))/g;
     
     let processedInput = input;
     let match;
@@ -1315,9 +1316,15 @@ ${text}`;
           
           console.log(`\x1b[90m[Loaded file: ${fileName}]\x1b[0m`);
         } else {
+          // Remove the @reference and add a note that file was not found
+          const replacement = `[File not found: ${filepath}]`;
+          processedInput = processedInput.replace(fullMatch, replacement);
           console.log(`\x1b[33m[Warning: File not found: ${filepath}]\x1b[0m`);
         }
       } catch (error) {
+        // Remove the @reference and add error note
+        const replacement = `[Could not read file: ${filepath}]`;
+        processedInput = processedInput.replace(fullMatch, replacement);
         console.log(`\x1b[33m[Warning: Could not read file ${filepath}: ${error.message}]\x1b[0m`);
       }
     }

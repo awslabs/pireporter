@@ -37,8 +37,7 @@ cp $(command -v node) pireporter
 
 # Step 5: Inject the blob using postject
 echo "Step 5: Injecting blob into binary..."
-npx postject pireporter NODE_SEA_BLOB sea-prep.blob \
-    --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+npx postject pireporter NODE_SEA_BLOB sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 
 # Cleanup
 rm -f pireporter-bundle.js sea-config.json sea-prep.blob
