@@ -1,0 +1,25 @@
+SELECT 
+    c.customer_name,
+    (SELECT SUM(oi.price * oi.quantity) 
+     FROM order_items oi 
+     WHERE oi.order_id IN (SELECT o.id FROM orders o WHERE o.customer_id = c.id)) as total_spent
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE c.region = 'EMEA' 
+  AND o.status = 'COMPLETED';
+
+
+QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
+Nested Loop  (cost=0.00..54210.45 rows=500 width=45) (actual time=45.120..12450.821 rows=480 loops=1)
+  Join Filter: (c.id = o.customer_id)
+  ->  Seq Scan on customers c  (cost=0.00..1845.00 rows=1200 width=24) (actual time=0.012..8.420 rows=1150 loops=1)
+        Filter: (region = 'North America'::text)
+  ->  Materialize  (cost=0.00..2450.12 rows=50000 width=8) (actual time=0.001..5.200 rows=50000 loops=1150)
+        ->  Seq Scan on orders o  (cost=0.00..1205.00 rows=50000 width=8) (actual time=0.010..4.120 rows=50000 loops=1)
+              Filter: (status = 'COMPLETED'::text)
+  SubPlan 1
+    ->  Aggregate  (cost=42.15..42.16 rows=1 width=8) (actual time=1.210..1.211 rows=1 loops=480)
+          ->  Seq Scan on order_items oi  (cost=0.00..42.10 rows=20 width=8) (actual time=1.190..1.205 rows=15 loops=480)
+                Filter: (order_id = ANY (subplan))
+

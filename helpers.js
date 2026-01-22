@@ -849,7 +849,6 @@ rds.describeDBInstances(params, async function(err, data) {
           maxACUs,
           Engine,
           DbiResourceId,
-          DBInstanceArn,
           DBInstanceStatus,
           Endpoint,
           InstanceCreateTime,
