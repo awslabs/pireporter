@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "aws-documentation": {
+      "command": "uvx",
+      "args": ["awslabs.aws-documentation-mcp-server@latest"],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "enabled": true,
+      "description": "AWS Documentation search and retrieval for accurate AWS recommendations"
+    },
+    "postgres": {
+      "command": "uvx",
+      "args": ["mcp-server-postgres"],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@localhost:5432/dbname"
+      },
+      "enabled": false,
+      "description": "PostgreSQL database query tool for direct database investigation. Configure connection string in env."
+    }
+  }
+}

@@ -29,7 +29,6 @@ function getBedrockCommand (system_prompt, prompt, messages, model = conf.bedroc
     bodyContent = {
       "max_tokens": 4096,
       "temperature": 0,
-      "top_p": 0,
       "messages": transformedMessages || [
         {
           "role": "user",
@@ -49,8 +48,7 @@ function getBedrockCommand (system_prompt, prompt, messages, model = conf.bedroc
     bodyContent = {
       "inferenceConfig": {
         "max_new_tokens": 4096,
-        "temperature": 0,
-        "top_p": 0
+        "temperature": 0
       },
       "messages": messages || [
         {

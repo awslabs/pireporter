@@ -33,3 +33,41 @@ Summary of the key points about tuning Aurora PostgreSQL:
 - WAL logging is key for recovery and reducing disk I/O. Setting wal_level controls how much is logged.
 - Autovacuum automates vacuum/analyze to reclaim space and update stats. But it can cause I/O spikes if not tuned well.
 - Consider that CPU in wait events doesnt mean that processes was waiting for CPU resources, it means that processes was on CPU, actively using CPU doing their job.
+- Aurora Serverless v2 ACU Scaling Investigation Guide for LLM
+### Primary Metrics to Check (in order of importance)
+1. **ACUUtilization** - % of max ACU capacity used
+   - →100% = instance hit max ACU limit, needs higher max setting
+2. **CPUUtilization** - % of CPU used relative to max ACU
+   - High value = CPU-driven scaling (queries, computations)
+3. **FreeableMemory** - Available memory at max capacity
+   - →0 = memory-driven scaling (buffer pool, connections, temp operations)
+4. **ServerlessDatabaseCapacity** - Current ACU count
+   - Track actual consumption over time
+5. **TempStorageIOPS / TempStorageThroughput** - Local storage activity
+   - Rare cause: temp table operations, sorts spilling to disk
+### Secondary Metrics (Network-related)
+- `NetworkReceiveThroughput` / `NetworkTransmitThroughput`
+- `StorageNetworkThroughput`
+### Features That Increase Baseline ACU (prevent scale-down)
+- Performance Insights (min 2 ACU recommended)
+- Aurora Global Database (min 8 ACU for primary region)
+- CloudWatch Logs export
+- `pg_audit` enabled
+- Enhanced Monitoring
+- Reader instances in promotion tier 0/1 (scale with writer)
+### Parameters That Prevent Scale-Down
+- `max_connections` above default
+- `max_locks_per_transaction` above default
+- Any shared memory parameters set higher than default
+### Performance Insights Counters
+- `os.general.serverlessDatabaseCapacity` - current ACUs
+- `os.general.acuUtilization` - % of max
+- `os.general.maxConfiguredAcu` / `os.general.minConfiguredAcu`
+### Quick Decision Tree
+```
+ACUUtilization=100%? → Max ACU limit reached
+CPUUtilization high? → CPU-bound workload
+FreeableMemory→0?    → Memory pressure
+TempStorage high?    → Disk spill operations
+None of above?       → Check enabled features/parameters
+```

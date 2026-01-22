@@ -200,7 +200,10 @@ In both cases we have `Europe/Berlin` timezone. If you have differnt values, the
                                  from the large language model (Amazon Bedrock), 
                                  which provides its findings, analysis, and 
                                  recommendations. This option works with create 
-                                 report and create compare periods report.                             
+                                 report and create compare periods report.
+  --chat                         Enter interactive chat mode after generating   
+                                 the report. Requires --ai-analyzes. Allows     
+                                 asking follow-up questions about the report.                             
   -r, --create-report            Create HTML report for snapshot.               
   -c, --create-compare-report    Create compare snapshots HTML report for two   
                                  snapshots.                                     
@@ -212,14 +215,96 @@ In both cases we have `Europe/Berlin` timezone. If you have differnt values, the
                                  and resource-intensive.                        
 ```
 
+##### Interactive Chat Mode
+
+The `--chat` option enables an interactive conversation mode where you can ask follow-up questions about your performance report. This feature requires the `--ai-analyzes` flag.
+
+```sh
+$ pireporter --create-report --snapshot snapshot_file.json --ai-analyzes --chat
+```
+
+In chat mode, you can:
+- Ask questions about wait events, SQL performance, metrics, and configuration
+- Request deeper analysis of specific issues identified in the report
+- Get recommendations for optimization
+- Include file contents in your questions using the `@filename` decorator
+
+Example chat session:
+```
+You: What are the top wait events?
+Assistant: Based on the snapshot data, the top wait events are...
+
+You: Show me the SQL with the highest load
+Assistant: The SQL statement with the highest database load is...
+
+You: Check this execution plan @plan.txt
+Assistant: Looking at the execution plan you provided...
+```
+
+Type `exit` or `quit` to end the chat session.
+
+##### MCP (Model Context Protocol) Support
+
+PIreporter supports MCP tools for extended functionality in chat mode. MCP allows the LLM to access external tools like AWS documentation search or direct database queries.
+
+To enable MCP:
+
+1. Set `mcpEnabled` to `true` in `conf.json`:
+```json
+{
+    "mcpEnabled": { "value": true, "description": "Enable MCP tools for chat mode" }
+}
+```
+
+2. Configure MCP servers in `mcp.json`:
+```json
+{
+  "mcpServers": {
+    "aws-documentation": {
+      "command": "uvx",
+      "args": ["awslabs.aws-documentation-mcp-server@latest"],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "enabled": true,
+      "description": "AWS Documentation search for accurate AWS recommendations"
+    },
+    "postgres": {
+      "command": "uvx",
+      "args": ["mcp-server-postgres"],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@localhost:5432/dbname"
+      },
+      "enabled": false,
+      "description": "PostgreSQL database query tool"
+    }
+  }
+}
+```
+
+MCP servers require `uvx` (from the `uv` Python package manager). Install it with:
+```sh
+pip install uv
+```
+
+When MCP is enabled, the chat welcome message will show the number of external tools available. The LLM can then use these tools to search AWS documentation, query databases directly, or access other external resources.
+
+Note: MCP requires internet access for some tools. Set `mcpEnabled` to `false` in environments without internet connectivity.
+
 ##### Examples
 
 1. Create a snapshot inlclude logfile analysis                                                                                                                      
     `$ pireporter --create-snapshot --start-time 2023-08-02T16:50 --end-time 2023-08-02T17:50 -i apginst1 --include-logfiles -m "High load period"`
 2. Create a report from snapshot                                                                                                                                    
     `$ pireporter --create-report --snapshot snapshot_apg-bm_20230802145000_20230802155000.json`
-3. Create a compare periods report                                                                                                                                  
+3. Create a report with AI analysis                                                                                                                                 
+    `$ pireporter --create-report --snapshot snapshot_apg-bm_20230802145000_20230802155000.json --ai-analyzes`
+4. Create a report with AI analysis and enter interactive chat mode                                                                                                 
+    `$ pireporter --create-report --snapshot snapshot_apg-bm_20230802145000_20230802155000.json --ai-analyzes --chat`
+5. Create a compare periods report                                                                                                                                  
     `$ pireporter --create-compare-report --snapshot snapshot_apg-bm_20230704150700_20230704194900.json --snapshot2 snapshot_apg-bm_20230619100000_20230619113000.json`
+6. Create a compare periods report with AI analysis and chat mode                                                                                                   
+    `$ pireporter --create-compare-report --snapshot snapshot1.json --snapshot2 snapshot2.json --ai-analyzes --chat`
 
 
 

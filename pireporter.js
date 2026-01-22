@@ -13,7 +13,7 @@
  permissions and limitations under the License.
 */
 
-global.version = "2.2.5"
+global.version = "3.0.3"
 
 const fs = require('fs');
 const path = require('path');
@@ -35,6 +35,100 @@ const { generateDateRanges,
 
 const { estimateServerless } = require('./estimators');
 
+/**
+ * Validates that both LLM models (main and lightweight) are accessible.
+ * Sends a simple test message to each model to verify connectivity.
+ * 
+ * @async
+ * @returns {Promise<void>} Resolves if both models are accessible
+ * @throws {Error} Exits process with error message if any model is not accessible
+ */
+async function validateLLMAccess() {
+  const { BedrockRuntimeClient, ConverseCommand } = require("@aws-sdk/client-bedrock-runtime");
+  
+  // Load config
+  let conf = {};
+  if (fs.existsSync('./conf.json')) {
+    conf = JSON.parse(fs.readFileSync('./conf.json', 'utf8'));
+  } else {
+    console.error('Cannot load ./conf.json. Check if file exists in the current directory.');
+    process.exit(1);
+  }
+  
+  const bedrockRegion = conf.bedrockRegion?.value;
+  const mainModel = conf.bedrockModel?.value;
+  const lightweightModel = conf.bedrockModelLightweight?.value;
+  
+  if (!bedrockRegion) {
+    console.error('Error: bedrockRegion not configured in conf.json');
+    process.exit(1);
+  }
+  
+  if (!mainModel) {
+    console.error('Error: bedrockModel not configured in conf.json');
+    process.exit(1);
+  }
+  
+  const client = new BedrockRuntimeClient({ region: bedrockRegion });
+  
+  const testMessage = {
+    role: 'user',
+    content: [{ text: 'Reply with OK' }]
+  };
+  
+  const testLLM = async (modelId, modelName) => {
+    const command = new ConverseCommand({
+      modelId: modelId,
+      messages: [testMessage],
+      inferenceConfig: {
+        maxTokens: 10,
+        temperature: 0
+      }
+    });
+    
+    try {
+      await client.send(command);
+      return { success: true };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.message || error.name || 'Unknown error'
+      };
+    }
+  };
+  
+  process.stdout.write('Validating LLM access... ');
+  
+  // Test main model
+  const mainResult = await testLLM(mainModel, 'Main model');
+  if (!mainResult.success) {
+    console.error(`\nError: Main LLM model (${mainModel}) is not accessible.`);
+    console.error(`Reason: ${mainResult.error}`);
+    console.error(`Region: ${bedrockRegion}`);
+    console.error('\nPlease check:');
+    console.error('  1. Model ID is correct in conf.json (bedrockModel)');
+    console.error('  2. Model is enabled in your AWS account for this region');
+    console.error('  3. AWS credentials have permission to invoke the model');
+    process.exit(1);
+  }
+  
+  // Test lightweight model (only if configured)
+  if (lightweightModel) {
+    const lightResult = await testLLM(lightweightModel, 'Lightweight model');
+    if (!lightResult.success) {
+      console.error(`\nError: Lightweight LLM model (${lightweightModel}) is not accessible.`);
+      console.error(`Reason: ${lightResult.error}`);
+      console.error(`Region: ${bedrockRegion}`);
+      console.error('\nPlease check:');
+      console.error('  1. Model ID is correct in conf.json (bedrockModelLightweight)');
+      console.error('  2. Model is enabled in your AWS account for this region');
+      console.error('  3. AWS credentials have permission to invoke the model');
+      process.exit(1);
+    }
+  }
+  
+  console.log('OK');
+}
 
 // Defining global variables. The APIs will be set in getGeneralInformation function.
 var rds
@@ -55,6 +149,7 @@ const optionDefinitions = [
   { name: 'use-2sd-values', type: Boolean, description: 'To calculate the required resource for the workload, consider the average value plus 2 standard deviations (SDs). By default the maximum usage is used.'},
   { name: 'comment', alias: 'm', type: String, description: 'Provide a comment to associate with the snapshot. When --ai-analyzes used to generate report, this comment will be provided to LLM as a hint.'},
   { name: 'ai-analyzes', alias: 'a', type: Boolean, description: 'When generating reports, include the analysis from the language model (Amazon Bedrock), which provides its findings, analysis, and recommendations. This option works with create report and create compare periods report.'},
+  { name: 'chat', alias: 't', type: Boolean, description: 'Enter interactive chat mode after report generation to ask questions about the data. Requires --ai-analyzes flag.'},
   { name: 'create-report', alias: 'r', type: Boolean, description: 'Create HTML report for snapshot.'},
   { name: 'create-compare-report', alias: 'c', type: Boolean, description: 'Create compare snapshots HTML report for two snapshots.'},
   { name: 'snapshot', type: String, description: 'Snapshot JSON file name.'},
@@ -75,8 +170,8 @@ const sections = [
       options: {noTrim: true, maxWidth: 300},
       data: [
       {1: '$ pireporter {bold --create-snapshot} {bold --rds-instance} {green name} {bold --start-time} {green YYYY-MM-DDTHH:MM} {bold --end-time} {green YYYY-MM-DDTHH:MM} [{dim --comment} {green text}] [{dim --include-logfiles}]'},
-      {1: '$ pireporter {bold --create-report} {bold --snapshot} {green snapshot_file}'},
-      {1: '$ pireporter {bold --create-compare-report} {bold --snapshot} {green snapshot_file} {bold --snapshot2} {green snapshot_file}'},
+      {1: '$ pireporter {bold --create-report} {bold --snapshot} {green snapshot_file} [{dim --ai-analyzes}] [{dim --chat}]'},
+      {1: '$ pireporter {bold --create-compare-report} {bold --snapshot} {green snapshot_file} {bold --snapshot2} {green snapshot_file} [{dim --ai-analyzes}] [{dim --chat}]'},
       {1: '$ pireporter {bold --do-estimation} {bold --rds-instance} {green name} {bold --start-time} {green YYYY-MM-DDTHH:MM} {bold --end-time} {green YYYY-MM-DDTHH:MM}'},
       {1: '$ pireporter {bold --help}'}
     ]}
@@ -97,6 +192,8 @@ const sections = [
       {1: '  $ pireporter --create-report --snapshot snapshot_apg-bm_20230802145000_20230802155000.json'},
       {1: '3. Create a compare periods report'},
       {1: '  $ pireporter --create-compare-report --snapshot snapshot_apg-bm_20230704150700_20230704194900.json --snapshot2 snapshot_apg-bm_20230619100000_20230619113000.json'},
+      {1: '4. Create a report with AI analysis and enter interactive chat mode'},
+      {1: '  $ pireporter --create-report --snapshot snapshot_apg-bm_20230802145000_20230802155000.json --ai-analyzes --chat'},
     ]}
   },
   {
@@ -360,6 +457,12 @@ if (options["create-report"]) {
     process.exit(1)
   }
   
+  // Chat mode requires --ai-analyzes to be explicitly enabled
+  if (options["chat"] && !options["ai-analyzes"]) {
+    console.error('Chat mode requires --ai-analyzes flag. Please run with both --chat and --ai-analyzes options.')
+    process.exit(1)
+  }
+  
   var snapshotLocation = path.isAbsolute(options.snapshot) ? options.snapshot : path.join(getSnapshotsDirectory(), options.snapshot)
   
   fs.readFile(snapshotLocation, 'utf8', async (err, data) => {
@@ -372,13 +475,36 @@ if (options["create-report"]) {
   
   var htmlReportFileName = path.basename(snapshotLocation).replace(/\.json$/, ".html").replace(/^snapshot_/, "report_");
   
-  var htmlReport = await generateHTMLReport(snapshotObject, options["ai-analyzes"])
+  // Validate LLM access before AI analysis
+  if (options["ai-analyzes"]) {
+    await validateLLMAccess();
+  }
+  
+  var reportResult = await generateHTMLReport(snapshotObject, options["ai-analyzes"])
+  var htmlReport = reportResult.html;
+  var llmAnalysis = reportResult.llmAnalysis;
   
   try {
        await fs.promises.writeFile(path.join(getReportsDirectory(), htmlReportFileName), htmlReport);
        console.log(`PI report created and saved into ${path.join(getReportsDirectory(), htmlReportFileName)}`);
       } catch (err) {
        console.error(`Error writing file ${path.join(getReportsDirectory(), htmlReportFileName)}:`, err);
+  }
+  
+  // Start interactive chat mode if requested (Requirement 1.1, 1.2)
+  if (options["chat"]) {
+    const { ChatSession } = require('./chatSession');
+    const session = new ChatSession({
+      type: 'single_snapshot',
+      snap1: snapshotObject,
+      snap2: null,
+      report: htmlReport,
+      llmAnalysis: llmAnalysis,
+      snapshotName: path.basename(options.snapshot),
+      reportsDirectory: getReportsDirectory()
+    });
+    await session.initialize();
+    await session.start();
   }
   
   process.exit()  
@@ -399,6 +525,12 @@ if (options["create-compare-report"]) {
   
   if (! options.snapshot2) {
     console.error('Provide the name of the second JSON snapshot file to compare using --snapshot2 argument.')
+    process.exit(1)
+  }
+
+  // Chat mode requires --ai-analyzes to be explicitly enabled
+  if (options["chat"] && !options["ai-analyzes"]) {
+    console.error('Chat mode requires --ai-analyzes flag. Please run with both --chat and --ai-analyzes options.')
     process.exit(1)
   }
 
@@ -435,13 +567,36 @@ if (options["create-compare-report"]) {
      var instanceNameString = (instanceName1 === instanceName2) ? instanceName1 : `${instanceName1}_${instanceName2}`
      var htmlReportFileName = `compare_report_${instanceNameString}_${dateRange1}-${dateRange2}.html`;
      
-     var htmlReport = await generateCompareHTMLReport(snapshotObject, snapshotObject2, options["ai-analyzes"])
+     // Validate LLM access before AI analysis
+     if (options["ai-analyzes"]) {
+       await validateLLMAccess();
+     }
+     
+     var reportResult = await generateCompareHTMLReport(snapshotObject, snapshotObject2, options["ai-analyzes"])
+     var htmlReport = reportResult.html;
+     var llmAnalysis = reportResult.llmAnalysis;
      
      try {
           await fs.promises.writeFile(path.join(getReportsDirectory(), htmlReportFileName), htmlReport);
           console.log(`PI report created and saved into ${path.join(getReportsDirectory(), htmlReportFileName)}`);
          } catch (err) {
           console.error(`Error writing file ${path.join(getReportsDirectory(), htmlReportFileName)}:`, err);
+     }
+  
+     // Start interactive chat mode if requested (Requirement 1.1, 1.2)
+     if (options["chat"]) {
+       const { ChatSession } = require('./chatSession');
+       const session = new ChatSession({
+         type: 'compare',
+         snap1: snapshotObject,
+         snap2: snapshotObject2,
+         report: htmlReport,
+         llmAnalysis: llmAnalysis,
+         snapshotName: path.basename(options.snapshot),
+         reportsDirectory: getReportsDirectory()
+       });
+       await session.initialize();
+       await session.start();
      }
   
      process.exit()
@@ -457,31 +612,32 @@ if (options["create-compare-report"]) {
 
 
 
-// Gather general information
-getGeneralInformation({DBInstanceIdentifier: InstanceName}, options, snapshotRange)
-.then(async GeneralInformation => {
-      //console.log('Output', 'GeneralInformation 1', JSON.stringify(GeneralInformation, null, 2));
+// Gather general information - only for create-snapshot and do-estimation operations
+if (options["create-snapshot"] || options["do-estimation"]) {
+  getGeneralInformation({DBInstanceIdentifier: InstanceName}, options, snapshotRange)
+  .then(async GeneralInformation => {
+        //console.log('Output', 'GeneralInformation 1', JSON.stringify(GeneralInformation, null, 2));
 
-    if (GeneralInformation.PerformanceInsightsEnabled !== true) {
-      console.error(`Performance Insights is not enabled for the provided instance ${InstanceName}!`);
-      process.exit(1);
-    }
+      if (GeneralInformation.PerformanceInsightsEnabled !== true) {
+        console.error(`Performance Insights is not enabled for the provided instance ${InstanceName}!`);
+        process.exit(1);
+      }
 
 
 
-    if (options["do-estimation"]) {    
-       // Estimate serverless price
-       try {
-         var result = await estimateServerless(GeneralInformation, options, snapshotRange)
-       } 
-       catch (error) {
-         console.log(error)
-         process.exit(1)
-       }
-       
-       console.log(result)
-       process.exit()
-    }
+      if (options["do-estimation"]) {    
+         // Estimate serverless price
+         try {
+           var result = await estimateServerless(GeneralInformation, options, snapshotRange)
+         } 
+         catch (error) {
+           console.log(error)
+           process.exit(1)
+         }
+         
+         console.log(result)
+         process.exit()
+      }
 
 
     
@@ -534,9 +690,10 @@ getGeneralInformation({DBInstanceIdentifier: InstanceName}, options, snapshotRan
     }
     
 
-})
-.catch(error => {
-  console.log(error)
-})
+  })
+  .catch(error => {
+    console.log(error)
+  })
+}
 
 

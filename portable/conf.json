@@ -14,13 +14,22 @@
     "inferenceParallelDegree": { "value": 8,
                                  "description": "Number of parallel Bedrock inference calls to execute."},
     
-    "bedrockRegion": { "value": "us-east-1",
+    "bedrockRegion": { "value": "eu-central-1",
                        "description": "The AWS region for Amazon Bedrock to use."},
     
-    "bedrockModel": { "value": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "bedrockModel": { "value": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
                     "description": "The Bedrock model ID or inference profile ID to use for analyzes."},
     
+    "bedrockModelLightweight": { "value": "anthropic.claude-3-haiku-20240307-v1:0",
+                                 "description": "Fast lightweight model for filtering metrics in chat mode. Used to select relevant metrics from large metric sets."},
+    
     "anthropicVersion": { "value": "bedrock-2023-05-31",
-                          "description": "Relevant for Claude models. The version of the Anthropic model to use for analyzes."}
+                          "description": "Relevant for Claude models. The version of the Anthropic model to use for analyzes."},
+    
+    "mcpEnabled": { "value": true,
+                    "description": "Enable MCP (Model Context Protocol) tools for chat mode. Set to true to allow LLM to use external tools like database queries and AWS documentation. Requires internet access for some tools."},
+    
+    "chatMaxContextTokens": { "value": 150000,
+                              "description": "Maximum token count for chat conversation history before summarization kicks in. Default 150000 leaves room for system prompt and response within 200K context window."}
     
 }

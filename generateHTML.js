@@ -956,7 +956,9 @@ ${logFilesHTML}
 </html>
 `
 
-    resolve(htmlReport)
+    // Return both HTML and LLM analysis data for chat mode
+    const llmAnalysis = genai ? genAI.getSections() : null;
+    resolve({ html: htmlReport, llmAnalysis })
 
   })
 
@@ -2300,7 +2302,9 @@ const generateCompareHTMLReport = async function(snapshotObject1, snapshotObject
   </html>
   `
 
-    resolve(htmlReport)
+    // Return both HTML and LLM analysis data for chat mode
+    const llmAnalysis = genai ? genAI.getSections() : null;
+    resolve({ html: htmlReport, llmAnalysis })
 
 
 

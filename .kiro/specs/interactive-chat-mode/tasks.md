@@ -1,0 +1,181 @@
+# Implementation Plan: Interactive Chat Mode
+
+## Overview
+
+This implementation plan breaks down the interactive chat mode feature into discrete coding tasks. The approach is incremental: first establishing the tool infrastructure, then building the chat session, and finally integrating with the CLI. Property-based tests are included as sub-tasks to validate correctness early.
+
+## Tasks
+
+- [x] 1. Set up project infrastructure for chat mode
+  - [x] 1.1 Add fast-check dependency to package.json for property-based testing
+    - Run `npm install --save-dev fast-check`
+    - _Requirements: Testing infrastructure_
+  - [x] 1.2 Create chatSession.js file with ChatSession class skeleton
+    - Define constructor accepting options (type, snap1, snap2, report)
+    - Add placeholder methods: initialize(), start(), processUserInput(), end()
+    - _Requirements: 1.1, 1.3_
+  - [x] 1.3 Create toolExecutor.js file with ToolExecutor class skeleton
+    - Define constructor accepting snap1 and optional snap2
+    - Add execute() method with switch statement for tool routing
+    - Add placeholder methods for each tool
+    - _Requirements: 2.2, 3.2, 4.2, 5.2, 6.2, 7.2_
+
+- [x] 2. Implement snapshot query tools
+  - [x] 2.1 Implement get_sql_stats tool in toolExecutor.js
+    - Accept sql_id or sql_db_id parameter
+    - Search SQLs array for matching ID
+    - Return dbload, pct_aas, AdditionalMetrics, SQL text from SQLTextFull
+    - Include LoadByDatabase, LoadByUser, and Waits data for the SQL
+    - Handle compare mode by querying both snapshots
+    - _Requirements: 2.2, 2.3, 2.4, 2.5_
+  - [x] 2.2 Write property test for get_sql_stats tool
+    - **Property 1: Valid identifier lookup returns correct data**
+    - **Property 2: Invalid identifier returns not found**
+    - **Validates: Requirements 2.2, 2.3, 2.4**
+  - [x] 2.3 Implement get_os_metrics tool in toolExecutor.js
+    - Accept category and/or metric_name parameters
+    - Navigate Metrics.OSMetrics structure
+    - Return metrics with avg, max, min, sum values
+    - Handle compare mode
+    - _Requirements: 3.2, 3.3, 3.4, 3.5_
+  - [x] 2.4 Write property test for get_os_metrics tool
+    - **Property 1: Valid identifier lookup returns correct data**
+    - **Property 2: Invalid identifier returns not found**
+    - **Validates: Requirements 3.2, 3.3, 3.4**
+  - [x] 2.5 Implement get_db_metrics tool in toolExecutor.js
+    - Accept category and/or metric_name parameters
+    - Navigate Metrics.DBMetrics structure
+    - Return metrics with avg, max, min, sum values
+    - Handle compare mode
+    - _Requirements: 4.2, 4.3, 4.4, 4.5_
+  - [x] 2.6 Write property test for get_db_metrics tool
+    - **Property 1: Valid identifier lookup returns correct data**
+    - **Property 2: Invalid identifier returns not found**
+    - **Validates: Requirements 4.2, 4.3, 4.4**
+  - [x] 2.7 Implement get_instance_config tool in toolExecutor.js
+    - Accept optional fields array parameter
+    - Return GeneralInformation data
+    - Filter to requested fields if specified
+    - Handle compare mode
+    - _Requirements: 5.2, 5.3, 5.4_
+  - [x] 2.8 Implement get_wait_events tool in toolExecutor.js
+    - Accept optional event_name parameter
+    - Return WaitEvents.TopEvents data
+    - Include event descriptions from knowledge base
+    - Handle compare mode
+    - _Requirements: 6.2, 6.3, 6.4, 6.5_
+  - [x] 2.9 Write property test for get_wait_events tool
+    - **Property 5: Wait event descriptions included**
+    - **Validates: Requirements 6.2, 6.3, 8.3**
+  - [x] 2.10 Implement get_parameters tool in toolExecutor.js
+    - Accept optional parameter_name parameter
+    - Return NonDefParameters data
+    - Indicate default value if parameter not in list
+    - Handle compare mode
+    - _Requirements: 7.2, 7.3, 7.4, 7.5_
+  - [x] 2.11 Write property test for compare mode across all tools
+    - **Property 3: Compare mode returns both snapshots**
+    - **Validates: Requirements 2.5, 3.5, 4.5, 5.4, 6.5, 7.5**
+
+- [x] 3. Checkpoint - Ensure all tool tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Implement Bedrock Converse API integration
+  - [x] 4.1 Create converseClient.js with Converse API wrapper
+    - Import ConverseCommand from @aws-sdk/client-bedrock-runtime
+    - Create converseWithTools function accepting client, modelId, messages, systemPrompt, toolConfig
+    - Handle throttling with exponential backoff (reuse pattern from genai.js)
+    - _Requirements: 10.1, 10.3_
+  - [x] 4.2 Define tool schemas in toolDefinitions.js
+    - Create toolConfig object with all 6 tools
+    - Follow Bedrock toolSpec format with name, description, inputSchema
+    - Export for use in ChatSession
+    - _Requirements: 10.1_
+  - [x] 4.3 Implement tool call parsing and execution loop
+    - Parse toolUse blocks from LLM response
+    - Execute each tool via ToolExecutor
+    - Format toolResult messages
+    - Support multiple sequential tool calls
+    - _Requirements: 10.3, 10.4, 10.5_
+  - [x] 4.4 Write property tests for tool execution
+    - **Property 9: Tool calls parsed and executed correctly**
+    - **Property 10: Multiple sequential tool calls supported**
+    - **Property 11: Tool errors returned gracefully**
+    - **Validates: Requirements 10.3, 10.4, 10.5**
+
+- [x] 5. Implement ChatSession class
+  - [x] 5.1 Implement initialize() method in chatSession.js
+    - Load knowledge base file based on snap1.GeneralInformation.Engine
+    - Load events.json and events_primary.json for event descriptions
+    - Store initial report in context
+    - Initialize empty messages array
+    - _Requirements: 1.3, 8.1, 8.2, 9.1_
+  - [x] 5.2 Write property test for knowledge base loading
+    - **Property 4: Knowledge base loaded based on engine**
+    - **Validates: Requirements 8.1**
+  - [x] 5.3 Implement start() method with REPL loop
+    - Display welcome message with capabilities
+    - Use readline interface for user input
+    - Check for "exit" or "quit" commands
+    - Call processUserInput() for questions
+    - _Requirements: 1.4, 1.5_
+  - [x] 5.4 Implement processUserInput() method
+    - Add user message to messages array
+    - Call converseWithTools with current context
+    - Handle tool_use stop reason with tool execution loop
+    - Handle end_turn stop reason by displaying response
+    - Add assistant response to messages array
+    - _Requirements: 9.2, 10.2, 10.6_
+  - [x] 5.5 Write property test for conversation history
+    - **Property 6: Conversation history preserved**
+    - **Property 8: Tool results retained in context**
+    - **Validates: Requirements 9.2, 9.4**
+  - [x] 5.6 Implement context summarization for long conversations
+    - Track token count of messages
+    - When exceeding threshold, summarize older messages
+    - Preserve recent K messages intact
+    - _Requirements: 9.3_
+  - [x] 5.7 Write property test for history summarization
+    - **Property 7: History summarization on overflow**
+    - **Validates: Requirements 9.3**
+  - [x] 5.8 Build system prompt with knowledge base and initial report
+    - Include engine-specific knowledge
+    - Include initial LLM report as context
+    - Describe available tools and their purposes
+    - _Requirements: 8.2, 9.1_
+
+- [x] 6. Checkpoint - Ensure ChatSession tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 7. Integrate with CLI
+  - [x] 7.1 Add --chat option to pireporter.js
+    - Add to optionDefinitions with alias '-t'
+    - Add description for help text
+    - _Requirements: 1.6_
+  - [x] 7.2 Modify create-report flow to support chat mode
+    - After generateHTMLReport, check if options.chat is true
+    - Auto-enable ai-analyzes if chat is requested
+    - Create ChatSession with single snapshot
+    - Call session.initialize() and session.start()
+    - _Requirements: 1.1, 1.2_
+  - [x] 7.3 Modify create-compare-report flow to support chat mode
+    - After generateCompareHTMLReport, check if options.chat is true
+    - Auto-enable ai-analyzes if chat is requested
+    - Create ChatSession with both snapshots in compare mode
+    - Call session.initialize() and session.start()
+    - _Requirements: 1.1, 1.2_
+  - [x] 7.4 Write unit tests for CLI integration
+    - Test --chat flag recognition
+    - Test auto-enable of --ai-analyzes
+    - Test help text includes chat option
+    - _Requirements: 1.1, 1.2, 1.6_
+
+- [x] 8. Final checkpoint - Full integration test
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- All tasks including tests are required for comprehensive implementation
+- Each task references specific requirements for traceability
+- Property tests use fast-check library with minimum 100 iterations
+- The implementation builds incrementally: tools → Bedrock integration → ChatSession → CLI

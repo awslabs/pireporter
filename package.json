@@ -1,16 +1,16 @@
 {
   "name": "pireporter",
-  "version": "1.0.0",
+  "version": "3.0.3",
   "description": "",
   "main": "pireporter.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --testPathPattern=test/"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.569.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.971.0",
     "@aws-sdk/client-cloudwatch": "^3.462.0",
     "@aws-sdk/client-ec2": "^3.502.0",
     "@aws-sdk/client-pi": "^3.462.0",
@@ -18,5 +18,8 @@
     "@aws-sdk/client-rds": "^3.462.0",
     "command-line-args": "^5.2.1",
     "command-line-usage": "^7.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }
