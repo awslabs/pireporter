@@ -26,7 +26,7 @@
     "anthropicVersion": { "value": "bedrock-2023-05-31",
                           "description": "Relevant for Claude models. The version of the Anthropic model to use for analyzes."},
     
-    "mcpEnabled": { "value": true,
+    "mcpEnabled": { "value": false,
                     "description": "Enable MCP (Model Context Protocol) tools for chat mode. Set to true to allow LLM to use external tools like database queries and AWS documentation. Requires internet access for some tools."},
     
     "chatMaxContextTokens": { "value": 150000,

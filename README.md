@@ -7,7 +7,12 @@ The PI Reporter is a tool designed to significantly streamline the process of pe
 * **HTML reports**: Generating HTML reports for individual snapshots and for comparison of two snapshots.
 
 
-##### New major version 2.0 released
+### New major version 3.0 released
+
+New major version adds interactive chat capability to the AI analyzes mode. Now you can chat with your reports. The LLM model with strong reasoning capability Claude Opus 4.5 is used as the main model. The model selection is configurable in the `conf.json` configuration file. Chat mode also supports MCP integrations (disabled by default); AWS documentation MCP server is pre-configured, and a postgres MCP server template is included in `mcp.json`. Check the interactive chat section for more details.
+
+
+### Version 2.0
 
 The main feature of this version is integration with Amazon Bedrock to leverage the power of the LLMs like Claude or Amazon Nova models for analyzing single snapshot and comparing snapshot reports, generating detailed report with summary (including root cause analysis) and recommendations for all sections of the report. This will significantly help and save time during troubleshooting and report reading.
 
@@ -15,7 +20,7 @@ GenAI analyses can be optionally enabled during the report generation phase. The
 
 Claude 3.5 Sonnet v2 model over cross-region inference is used by default. Other models like Claude 3 Opus or Amazon Nova can be used.
 
-The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Claude 3.5 Sonnet v2 and other big models. You can change the model in the `conf.js` configuration file, you can use also inference profile ID of the cross-region inference. Make sure that the model you are trying to use is part of policy. The account which will generate reports must enable access to the required Claude or Amazon Nova model. Use this guide to enable access: [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
+The `pireporterPolicy.json` file now includes a section that allows the `InvokeModel` action on the Claude 3.5 Sonnet v2 and other big models. You can change the model in the `conf.js` configuration file, you can use also inference profile ID of the cross-region inference. Make sure that the model you are trying to use is part of policy.
 
 Be aware that using `--ai-analyzes` will incur additional charges. The tool will always print out the number of input and output tokens used to accomplish the analyses. It will help you estimate the cost.
 
@@ -38,11 +43,12 @@ Additionally, the comments associated with snapshots using the `-m` command-line
 * Generate the compare period reports which are the most efficient and fast way to detect any changes in performance, workload, stats or configuration.
 * Understand if the instance can handle the workload and if a right-sizing exercise is required for the instance.
 * To provide instance, workload, and performance statistics to third parties like external support engineers or companies without giving them direct access to the system. This increases security while supplying the engineers with adequate information to make timely decisions.
-* LLM analyzes of the report, including root cause of the problem if any and recommendations.
+* LLM analysis of the report, including root cause identification and recommendations.
+* Interactive chat mode to ask questions about your reports and explore performance data conversationally.
 
 ##### Functional capabilities:
 
-The following data will be gathered into the snapshot files and represented in the reports::
+The following data will be gathered into the snapshot files and represented in the reports:
 * Snapshot metadata
 * General details about the Amazon Aurora instance, such as instance name, DB instance class, parameter group, backup retention, cluster identifier, multi-AZ configuration, number of vCPUs, network performance, and more.
 * Non-default parameters
@@ -56,7 +62,8 @@ The following data will be gathered into the snapshot files and represented in t
 * SQL Insights: Presents top SQL queries ranked by load, read I/O, write I/O, and combined read-write I/O. Each SQL entry includes various statistics, additional information from pg_stat_statements, and wait events. It also displays the distribution of SQL load across different databases and users.
 * Log File Analysis: The tool downloads and analyzes log files from the snapshot period, grouping and displaying error or fatal messages in the report if any are found.
 * Compare Period Report: Enables comparison between two snapshots to quickly identify differences in metrics and SQL performance.
-* GenAI analyzes of the report with summary of the possible root cause and recommendations.
+* GenAI analysis of the report with summary of the possible root cause and recommendations.
+* Interactive chat mode: Ask follow-up questions about your reports, explore correlations, and get deeper insights through natural language conversation with the LLM.
 
 ##### Screenshots
 
@@ -215,7 +222,7 @@ In both cases we have `Europe/Berlin` timezone. If you have differnt values, the
                                  and resource-intensive.                        
 ```
 
-##### Interactive Chat Mode
+### Interactive Chat Mode
 
 The `--chat` option enables an interactive conversation mode where you can ask follow-up questions about your performance report. This feature requires the `--ai-analyzes` flag.
 
@@ -228,22 +235,19 @@ In chat mode, you can:
 - Request deeper analysis of specific issues identified in the report
 - Get recommendations for optimization
 - Include file contents in your questions using the `@filename` decorator
-
-Example chat session:
-```
-You: What are the top wait events?
-Assistant: Based on the snapshot data, the top wait events are...
-
-You: Show me the SQL with the highest load
-Assistant: The SQL statement with the highest database load is...
-
-You: Check this execution plan @plan.txt
-Assistant: Looking at the execution plan you provided...
-```
+- Save the conversation as a markdown report for documentation or sharing
 
 Type `exit` or `quit` to end the chat session.
 
-##### MCP (Model Context Protocol) Support
+The LLM is provided with local tools responsible for different parts of the snapshot (or snapshots in case of compare period analysis). This enables the LLM to request different metrics, configuration information, and SQLs. The compressed engine-related knowledge and initial deep analysis summary are injected into the LLM's system prompt.
+
+In chat mode, a summary of the initial deep analysis and recommendations is displayed, and then the chat prompt appears.
+
+First read the summary and then ask your clarifying questions.
+
+The tool implements continuous message compression without losing meaning, which allows for a much larger context and longer discussions before emergency summarization kicks in.
+
+### MCP (Model Context Protocol) Support
 
 PIreporter supports MCP tools for extended functionality in chat mode. MCP allows the LLM to access external tools like AWS documentation search or direct database queries.
 
@@ -290,6 +294,29 @@ pip install uv
 When MCP is enabled, the chat welcome message will show the number of external tools available. The LLM can then use these tools to search AWS documentation, query databases directly, or access other external resources.
 
 Note: MCP requires internet access for some tools. Set `mcpEnabled` to `false` in environments without internet connectivity.
+
+### Chat Mode Examples
+
+Chat welcome screen showing example questions and usage instructions:
+
+![Chat welcome screen](screen8.png)
+
+Asking for SQL correlation analysis - the LLM generates visualizations showing resource attribution by SQL and provides actionable recommendations:
+
+![SQL impact visualization and recommendations](screen6.png)
+
+Key insights with workload impact flow diagram, healthy correlations observed, and recommendations:
+
+![Key insights and correlations](screen7.png)
+
+Using the `@filename` decorator to load a file containing SQL and execution plan for analysis:
+
+![File decorator for SQL analysis](screen9.png)
+
+Saving the conversation as a markdown report for documentation or sharing, just ask Assistant to save it:
+
+![Save conversation report](screen10.png)
+
 
 ##### Examples
 
