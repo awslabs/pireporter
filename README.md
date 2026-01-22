@@ -69,11 +69,11 @@ The following data will be gathered into the snapshot files and represented in t
 
 General information section:
 
-![Screen 1](https://raw.githubusercontent.com/awslabs/pireporter/master/screen1.png)
+![Screen 1](screenshots/screen1.png)
 
 Metrics calculated from other metrics and workload analysis section:
 
-![Screen 2](https://raw.githubusercontent.com/awslabs/pireporter/master/screen2.png)
+![Screen 2](screenshots/screen2.png)
 
 Next are parts of the compare periods report, where yellow represents snapshot 1 data, teal blue snapshot 2 data and green the difference.
 
@@ -87,14 +87,14 @@ Difference between two metrics represtend in three forms, for example `+7.81 [1.
 
 So in this case, the metric increased by an absolute value of 7.81 units, which is a 1.1x or 13% increase over the previous value. The 7.81, 1.1x, and 13% all represent the same increase, just expressed in different ways (absolute, factor, and percentage respectively).
 
-![Screen 3](https://raw.githubusercontent.com/awslabs/pireporter/master/screen3.png)
+![Screen 3](screenshots/screen3.png)
 
-![Screen 4](https://raw.githubusercontent.com/awslabs/pireporter/master/screen4.png)
+![Screen 4](screenshots/screen4.png)
 
 
 GenAI analyzes of the report:
 
-![Screen 5](https://raw.githubusercontent.com/awslabs/pireporter/master/screen5.png)
+![Screen 5](screenshots/screen5.png)
 
 ##### How to use
 
@@ -299,23 +299,23 @@ Note: MCP requires internet access for some tools. Set `mcpEnabled` to `false` i
 
 Chat welcome screen showing example questions and usage instructions:
 
-![Chat welcome screen](screen8.png)
+![Chat welcome screen](screenshots/screen8.png)
 
 Asking for SQL correlation analysis - the LLM generates visualizations showing resource attribution by SQL and provides actionable recommendations:
 
-![SQL impact visualization and recommendations](screen6.png)
+![SQL impact visualization and recommendations](screenshots/screen6.png)
 
 Key insights with workload impact flow diagram, healthy correlations observed, and recommendations:
 
-![Key insights and correlations](screen7.png)
+![Key insights and correlations](screenshots/screen7.png)
 
 Using the `@filename` decorator to load a file containing SQL and execution plan for analysis:
 
-![File decorator for SQL analysis](screen9.png)
+![File decorator for SQL analysis](screenshots/screen9.png)
 
 Saving the conversation as a markdown report for documentation or sharing, just ask Assistant to save it:
 
-![Save conversation report](screen10.png)
+![Save conversation report](screenshots/screen10.png)
 
 
 ##### Examples
