@@ -104,24 +104,46 @@ Create an IAM Policy called pireporterPolicy.json which is part of this reposito
 
 Attach the pireporterPolicy to the instance role of the EC2 instance where you plan to run the tool.
 
+##### Git LFS Requirement
+
+This repository uses Git LFS (Large File Storage) to manage the portable binary executables, which exceed GitHub's standard file size limits. You must install Git LFS before cloning the repository to automatically download these binaries.
+
+**Install Git LFS (one-time setup):**
+```sh
+sudo yum install git-lfs -y  # Amazon Linux / RHEL / CentOS
+# or
+sudo apt-get install git-lfs  # Debian / Ubuntu
+# or
+brew install git-lfs          # macOS
+
+git lfs install
+```
+
+**If you already cloned without Git LFS:**
+```sh
+git lfs install
+git lfs pull
+```
+
 There are two options to run pireporter:
 
 1. Clone this repo to local host and use node.js to execute the pireporter.js script. It requires connection to npm repositories and installation of packages and node.js itself.
 
 ```sh
+git clone https://github.com/awslabs/pireporter.git
 cd pireporter
 npm install
 node pireporter.js --help
 ```
 
-2. Use the portable packaged version which do not require any installations. The packaged version was created using [pkg] which is open-source tool published under MIT License.
+2. Use the portable packaged version which does not require any installations. The packaged version was created using Node.js Single Executable Applications (SEA).
 
 ```sh
 cd portable
 ./pireporter --help
 ```
 
-> Note: For security reasons you can also clone the repository and install `pkg` on a staging machine and build a packaged version yourself and then use it in your environment.
+> Note: For security reasons you can also clone the repository on a staging machine, build the portable version yourself using the included `build.sh` script, and then use it in your environment.
 
 Consider that you can execute PIreporter from any Linux host located outside of AWS. For example, the access key and secret key can be stored in the shared credentials file `~/.aws/credentials`. The AWS SDK used in PIreporter will automatically read it on load. For sure, the PIreporter policy must be attached to the IAM entity to which the access key applies.
 
