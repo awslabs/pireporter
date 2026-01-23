@@ -143,8 +143,8 @@ const optionDefinitions = [
   { name: 'version', description: 'Display version number.', alias: 'v', type: Boolean},
   { name: 'rds-instance', alias: 'i', type: String, description: 'The RDS instance name to create snapshot.' },
   { name: 'create-snapshot', alias: 's', type: Boolean, description: 'Create snapshot.'},
-  { name: 'start-time', type: String, description: 'Snapshot start time. Allowed format is ISO 8601 "YYYY-MM-DDTHH:MM". Seconds will be ignored if provided.'},
-  { name: 'end-time', type: String, description: 'Snapshot end time. Same format as for start time.'},
+  { name: 'start-time', type: String, description: 'Snapshot start time in UTC. Allowed format is ISO 8601 "YYYY-MM-DDTHH:MM". Seconds will be ignored if provided.'},
+  { name: 'end-time', type: String, description: 'Snapshot end time in UTC. Same format as for start time.'},
   { name: 'res-reserve-pct', type: Number, description: 'Specify the percentage of additional resources to reserve above the maximum metrics when generating instance type recommendations. Default is 15.'},
   { name: 'use-2sd-values', type: Boolean, description: 'To calculate the required resource for the workload, consider the average value plus 2 standard deviations (SDs). By default the maximum usage is used.'},
   { name: 'comment', alias: 'm', type: String, description: 'Provide a comment to associate with the snapshot. When --ai-analyzes used to generate report, this comment will be provided to LLM as a hint.'},
@@ -228,18 +228,18 @@ if (fs.existsSync('./conf.json')) {
 var startTime
 var endTime
 
-var timeOffset = (new Date().getTimezoneOffset() / 60) * -1;
-
+// Parse times as UTC to ensure consistency with RDS/PI which use UTC timestamps.
+// This allows the tool to work correctly regardless of the local machine's timezone.
 if (options['start-time']) {
   const [startYear, startMonth, startDay, startHour, startMinute] = options['start-time'].split(/[-T:]/).map(Number);
-  n = new Date(startYear, startMonth - 1, startDay, startHour, startMinute);
-  startTime = new Date(n.getTime() + timeOffset);
+  // Use Date.UTC to create a UTC timestamp directly
+  startTime = new Date(Date.UTC(startYear, startMonth - 1, startDay, startHour, startMinute, 0));
 }
 
 if (options['end-time']) {
   const [endYear, endMonth, endDay, endHour, endMinute] = options['end-time'].split(/[-T:]/).map(Number);
-  n = new Date(endYear, endMonth - 1, endDay, endHour, endMinute);
-  endTime = new Date(n.getTime() + timeOffset);
+  // Use Date.UTC to create a UTC timestamp directly
+  endTime = new Date(Date.UTC(endYear, endMonth - 1, endDay, endHour, endMinute, 0));
 }
 
 
