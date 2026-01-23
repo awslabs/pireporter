@@ -19,7 +19,7 @@ You will combine this summary with other summaries from other report sections re
 
 Knowledge to consider:
 If StorageType is aurora, then ignore MulitAZ configuration value, its not relevant for StorageType aurora.
-StorageType aurora means that storage is shared between all attached instances (writer and all readers) and its automatically mirrored accross three availability zones. 
+StorageType aurora means that storage is shared between all attached instances (writer and all readers) and its automatically mirrored across three availability zones. 
 In case of Aurora important is the NumberOfOtherInstances. If NumberOfOtherInstances is 0, then suggest to add at least one reader instance for faster failover.
 Performance Insights can be enabled for the instance. For 7 days performance history its free. For this troubleshooting tool to work it must be enabled. When its enabled it callect important OS and database stats and metrics.
 When database logs exported to cloudwatch it makes it easier to analyze them, users can also create alarms based on some patters, for example if specific message appers in log file action can be taken including mail notification.
