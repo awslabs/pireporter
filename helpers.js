@@ -794,9 +794,12 @@ rds.describeDBInstances(params, async function(err, data) {
           
     //console.log('Output', JSON.stringify(data.DBInstances, null, 2));
     if (DBInstanceClass === 'db.serverless') {
-       try {
-         var {minACUs, maxACUs}  = await getServerlessMaxACU(pi, DbiResourceId, snapshotRange.endTime)
-       } catch (err) { reject(err) }
+       // Only fetch ACU metrics when snapshotRange is available (not during create-report/create-compare-report)
+       if (snapshotRange && snapshotRange.endTime) {
+         try {
+           var {minACUs, maxACUs}  = await getServerlessMaxACU(pi, DbiResourceId, snapshotRange.endTime)
+         } catch (err) { reject(err) }
+       }
     } else {
         try {
           var EC2Instance = await getEC2Details(DBInstanceClass, ec2);
