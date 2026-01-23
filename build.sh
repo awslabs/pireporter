@@ -9,7 +9,7 @@ echo "=== Building pireporter portable executable using Node.js SEA ==="
 
 # Create portable directory
 mkdir -p ./portable
-cp conf.json pireporterPolicy.json report.css ./portable/
+cp conf.json mcp.json pireporterPolicy.json report.css ./portable/
 cp -r genai ./portable/
 
 # Step 1: Bundle all JS into a single file using esbuild

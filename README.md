@@ -1,6 +1,27 @@
 # PI Reporter
 ## The Performance Insights Reporter tool captures snapshots of PI data and generates reports for single snapshots or comparisons across time periods. It uses an agentic approach to analyze reports using LLMs and identify problems and provide recommendations.
 
+### Table of Contents
+
+- [New major version 3.0 released](#new-major-version-30-released)
+- [Version 2.0](#version-20)
+- [Benefits](#some-of-the-main-benefits-of-the-pi-reporter-are)
+- [Functional capabilities](#functional-capabilities)
+- [Screenshots](#screenshots)
+- [How to use](#how-to-use)
+- [Git LFS Requirement](#git-lfs-requirement)
+- [AWS Region](#aws-region)
+- [Security considerations](#security-considerations)
+- [General considerations](#general-considerations)
+- [Synopsis](#synopsis)
+- [Command line options](#command-line-options)
+- [Interactive Chat Mode](#interactive-chat-mode)
+- [MCP (Model Context Protocol) Support](#mcp-model-context-protocol-support)
+- [Chat Mode Examples](#chat-mode-examples)
+- [Examples](#examples)
+
+---
+
 The PI Reporter is a tool designed to significantly streamline the process of performance troubleshooting, right-sizing, and cost optimization exercises. It captures snapshots of performance insights (PI) data and generates reports for specific time frame and compare periods report for easy comparison between two time periods. The tool's functionalities include:
 
 * **Snapshot creation**: Capturing a snapshot of a specified time range, with the data stored in a JSON file.
