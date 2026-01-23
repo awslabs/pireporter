@@ -1111,10 +1111,24 @@ const counterMetrics = async function (generalInformation, options) {
   
   
   var cwData = await getCWMetrics(generalInformation)
-  // Check if cloudWatch returns data
+  
+  // Check if CloudWatch returns data - if not, use default values instead of exiting
+  // This allows generating reports for periods where high-resolution CloudWatch metrics have aged out
+  // but Performance Insights data is still available (PI retains data longer than CW high-res metrics)
+  var cloudWatchDataUnavailable = false
   if (cwData.MetricDataResults.find(v => v.Id === 'dbLoad').Values.length === 0) {
-    console.log('No performance data available from CloudWatch for the selected timeframe. Please choose a timeframe with application load or user activity.')
-    process.exit(1)
+    console.warn('WARNING: No performance data available from CloudWatch for the selected timeframe.')
+    console.warn('CloudWatch high-resolution metrics may have aged out. Using default values for CloudWatch-based metrics.')
+    console.warn('Note: Some metrics will show as 0 or unavailable in the report.')
+    cloudWatchDataUnavailable = true
+    
+    // Replace empty metric arrays with default values to prevent downstream errors
+    cwData.MetricDataResults.forEach(metric => {
+      if (metric.Values.length === 0) {
+        metric.Values = [0]
+        metric.Label = '0'
+      }
+    })
   }
   
   var auroraEstimatedSharedMemoryBytesMax = calculateMax(cwData.MetricDataResults.find(v => v.Id === 'auroraEstimatedSharedMemoryBytes').Values)
@@ -1208,10 +1222,16 @@ const counterMetrics = async function (generalInformation, options) {
   // #ag
   
   var AdditionalMetrics = {
+    cloudWatchDataUnavailable: cloudWatchDataUnavailable ? {
+                           value: 'Yes',
+                           unit: 'Warning',
+                           label: 'CloudWatch metrics unavailable',
+                           desc: 'CloudWatch high-resolution metrics have aged out for the selected timeframe. Metrics derived from CloudWatch (buffer cache hit ratio, freeable memory, network throughput, storage metrics, etc.) are showing default values of 0 and should not be used for analysis. Performance Insights data is still available.'
+                         } : undefined,
     bufferCacheHitRatio: {value: parseFloat(cwData.MetricDataResults.find(v => v.Id === 'bufferCacheHitRatio').Label.replace(/,/g, '')),
                            unit: 'Percent',
                            label: 'Buffer cache hit ratio', 
-                           desc: `Buffer cache hit ratio`},
+                           desc: `Buffer cache hit ratio${cloudWatchDataUnavailable ? ' (CloudWatch data unavailable - showing default value)' : ''}`},
     freeableMemoryAvg: {value: (parseFloat(cwData.MetricDataResults.find(v => v.Id === 'freeableMemoryAVG').Label.replace(/,/g, '')) /1024/1024/1024).toFixed(2),
                            unit: 'GB',
                            label: 'Freeable Memory average', 
@@ -1553,6 +1573,7 @@ const counterMetrics = async function (generalInformation, options) {
   returnObject['Correlations'] = correlations
   returnObject['OSMetrics'] = OS_Metrics
   returnObject['DBMetrics'] = DB_Metrics
+  returnObject['CloudWatchDataUnavailable'] = cloudWatchDataUnavailable
   
   resolve(returnObject);
     
