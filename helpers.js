@@ -749,6 +749,15 @@ const getServerlessMaxACU = async function (pi, DbiResourceId, endTime) {
 const getGeneralInformation = async function (params, options, snapshotRange) {
   return new Promise(async (resolve, reject) => {
 
+  // Validate that DBInstanceIdentifier is provided to avoid listing all instances
+  // which fails with tag-based IAM policies (see issue #8)
+  if (!params || !params.DBInstanceIdentifier) {
+    const err = new Error('DBInstanceIdentifier is required but was not provided');
+    console.error(err.message);
+    reject(err);
+    return;
+  }
+
   // Getting the current region from instance metadata and setting APIs for the services using this region
   const myRegion = await getCurrentRegion()
   // console.log('AWS Region', myRegion)
