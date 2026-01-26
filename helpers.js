@@ -317,7 +317,7 @@ const calculateSum = function (numbers) {
     return undefined;
   }
   let sum = 0;
-  for (let i = 1; i < numbers.length; i++) {
+  for (let i = 0; i < numbers.length; i++) {
     if (numbers[i] == null) continue
     sum = sum + numbers[i]
   }
