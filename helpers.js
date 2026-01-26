@@ -52,13 +52,19 @@ const getToken = function () {
 const getCurrentRegion = async function () {
   return new Promise(async (resolve, reject) => {
    
-  // Setting region to the AWS_REGION environment variable. In the function getGeneralInformation we will check for its value, if its empty, then we will get 
-  // the region from the instance medatada using IMDSv2
+  // First check AWS_REGION environment variable (works for remote/local environments)
   if (process.env.AWS_REGION) {
        resolve(process.env.AWS_REGION)
        return
   }
+  
+  // Also check AWS_DEFAULT_REGION as fallback
+  if (process.env.AWS_DEFAULT_REGION) {
+       resolve(process.env.AWS_DEFAULT_REGION)
+       return
+  }
  
+  // Try to get region from EC2 instance metadata (IMDSv2) - only works when running on EC2
   try {
     const token = await getToken();
     const options = {
@@ -68,7 +74,8 @@ const getCurrentRegion = async function () {
       method: 'GET',
       headers: {
         'X-aws-ec2-metadata-token': token
-      }
+      },
+      timeout: 2000  // 2 second timeout for IMDS
     };
 
     const req = http.request(options, (res) => {
@@ -84,12 +91,31 @@ const getCurrentRegion = async function () {
     });
 
     req.on('error', (error) => {
-      reject(error)
+      reject(new Error(
+        'Unable to determine AWS region. When running outside of AWS (locally or remotely), ' +
+        'please set the AWS_REGION or AWS_DEFAULT_REGION environment variable.\n' +
+        'Example: export AWS_REGION=us-east-1\n' +
+        'Original error: ' + error.message
+      ))
+    });
+    
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(
+        'Unable to determine AWS region. EC2 metadata service (IMDS) timed out.\n' +
+        'When running outside of AWS (locally or remotely), please set the AWS_REGION or AWS_DEFAULT_REGION environment variable.\n' +
+        'Example: export AWS_REGION=us-east-1'
+      ))
     });
 
     req.end();
   } catch (error) {
-    console.error('Error:', error);
+    reject(new Error(
+      'Unable to determine AWS region. When running outside of AWS (locally or remotely), ' +
+      'please set the AWS_REGION or AWS_DEFAULT_REGION environment variable.\n' +
+      'Example: export AWS_REGION=us-east-1\n' +
+      'Original error: ' + error.message
+    ))
   }
  });
 };
